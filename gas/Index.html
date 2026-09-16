@@ -1,0 +1,3010 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Chat Analytics & Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  .report-pie-wrap { position: relative; width: 100%; height: 280px; min-width: 0; min-height: 220px; }
+  .report-pie-wrap canvas { display: block !important; position: relative !important; width: 100% !important; height: 100% !important; max-width: 100% !important; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800" x-data="dashboardData()">
+
+
+  <div id="appMain" class="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">📊 Chat Analytics & Dashboard</h1>
+        <p class="text-sm text-gray-500">ระบบติดตามและวิเคราะห์ข้อมูลแชทลูกค้าแบบ Realtime</p>
+      </div>
+     
+      <!-- Filter Bar -->
+      <div class="flex flex-wrap gap-3 items-center bg-white p-3 rounded-lg shadow-sm border border-gray-200 relative">
+       
+        <!-- Year Dropdown -->
+        <div class="relative" @click.away="openYear = false">
+          <label class="text-xs text-gray-500 block font-semibold mb-1">ปี (Year)</label>
+          <button @click="openYear = !openYear" class="bg-white border rounded px-3 py-1.5 text-xs font-medium flex items-center justify-between min-w-[110px] shadow-xs hover:bg-gray-50">
+            <span x-text="selectedYears.length === 0 ? 'ทั้งหมด (' + uniqueYears.length + ')' : 'เลือกแล้ว (' + selectedYears.length + ')'"></span>
+            <span class="text-gray-400 text-[10px] ml-1">▼</span>
+          </button>
+          <div x-show="openYear" class="absolute left-0 mt-1 w-48 bg-white border rounded-lg shadow-lg p-2 z-50 max-h-48 overflow-y-auto space-y-1">
+            <template x-for="y in uniqueYears">
+              <label class="flex items-center gap-2 text-xs cursor-pointer p-1 hover:bg-gray-50 rounded">
+                <input type="checkbox" :value="y" x-model="selectedYears" class="rounded text-blue-600">
+                <span x-text="y"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Month Dropdown -->
+        <div class="relative" @click.away="openMonth = false">
+          <label class="text-xs text-gray-500 block font-semibold mb-1">เดือน (Month)</label>
+          <button @click="openMonth = !openMonth" class="bg-white border rounded px-3 py-1.5 text-xs font-medium flex items-center justify-between min-w-[120px] shadow-xs hover:bg-gray-50">
+            <span x-text="selectedMonths.length === 0 ? 'ทั้งหมด (' + uniqueMonths.length + ')' : 'เลือกแล้ว (' + selectedMonths.length + ')'"></span>
+            <span class="text-gray-400 text-[10px] ml-1">▼</span>
+          </button>
+          <div x-show="openMonth" class="absolute left-0 mt-1 w-48 bg-white border rounded-lg shadow-lg p-2 z-50 max-h-48 overflow-y-auto space-y-1">
+            <template x-for="m in uniqueMonths">
+              <label class="flex items-center gap-2 text-xs cursor-pointer p-1 hover:bg-gray-50 rounded">
+                <input type="checkbox" :value="m" x-model="selectedMonths" class="rounded text-blue-600">
+                <span x-text="'เดือน ' + m"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Date Dropdown -->
+        <div class="relative" @click.away="openDate = false">
+          <label class="text-xs text-gray-500 block font-semibold mb-1">วันที่ (Date)</label>
+          <button @click="openDate = !openDate" class="bg-white border rounded px-3 py-1.5 text-xs font-medium flex items-center justify-between min-w-[120px] shadow-xs hover:bg-gray-50">
+            <span x-text="selectedDates.length === 0 ? 'ทั้งหมด (' + uniqueDates.length + ')' : 'เลือกแล้ว (' + selectedDates.length + ')'"></span>
+            <span class="text-gray-400 text-[10px] ml-1">▼</span>
+          </button>
+          <div x-show="openDate" class="absolute left-0 mt-1 w-48 bg-white border rounded-lg shadow-lg p-2 z-50 max-h-48 overflow-y-auto space-y-1">
+            <template x-for="d in uniqueDates">
+              <label class="flex items-center gap-2 text-xs cursor-pointer p-1 hover:bg-gray-50 rounded">
+                <input type="checkbox" :value="d" x-model="selectedDates" class="rounded text-blue-600">
+                <span x-text="'วันที่ ' + d"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <button @click="resetFilter()" class="mt-5 bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-xs hover:bg-gray-300 font-medium">ล้างตัวกรอง</button>
+      </div>
+    </div>
+    <!-- Navigation Tabs -->
+    <div class="flex border-b border-gray-200">
+      <button @click="currentTab = 'dashboard'" :class="currentTab === 'dashboard' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'" class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none">1) Dashboard ภาพรวม</button>
+      <button @click="currentTab = 'chat'" :class="currentTab === 'chat' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'" class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none">2) หน้าแชท</button>
+      <button @click="currentTab = 'customer'" :class="currentTab === 'customer' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'" class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none">3) ข้อมูลลูกค้า (Customer Data)</button>
+      <button @click="currentTab = 'keywords'" :class="currentTab === 'keywords' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'" class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none">4) Keywords</button>
+      <button @click="currentTab = 'report'" :class="currentTab === 'report' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'" class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none">5) Report</button>
+    </div>
+
+    <template x-if="loading">
+      <div class="text-center py-20 text-gray-500">กำลังโหลดข้อมูลจาก Google Sheet...</div>
+    </template>
+
+
+    <div x-show="!loading" class="space-y-6">
+     
+      <!-- Global Stat Card & Key Word Search Boxes Side-by-Side -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Stat Card -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-center">
+          <p class="text-sm text-gray-500">จำนวนแชททั้งหมด (ตาม Filter)</p>
+          <p class="text-3xl font-bold text-blue-600 mt-2" x-text="currentTab === 'customer' ? customersByProcessFilter.length : (currentTab === 'chat' ? chatsByProcessFilter.length : processFilteredData.length)"></p>
+        </div>
+
+        <!-- Keyword Search Box 1: Customer -->
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-between space-y-2">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-bold text-gray-700">🔍 ค้นหา Keyword (ลูกค้าพิมพ์)</label>
+            <div class="inline-flex rounded-md shadow-xs bg-gray-100 p-0.5 text-[10px]">
+              <button @click="customerMatchMode = 'OR'" :class="customerMatchMode === 'OR' ? 'bg-blue-600 text-white font-bold' : 'text-gray-600 hover:text-gray-900'" class="px-2 py-0.5 rounded transition">OR</button>
+              <button @click="customerMatchMode = 'AND'" :class="customerMatchMode === 'AND' ? 'bg-blue-600 text-white font-bold' : 'text-gray-600 hover:text-gray-900'" class="px-2 py-0.5 rounded transition">AND</button>
+            </div>
+          </div>
+
+          <div class="flex gap-1">
+            <input type="text" x-model="tempCustKeyword" @keydown.enter.prevent="addCustomerKeyword()" placeholder="พิมพ์ค้นหา หรือกด Enter เพื่อเพิ่ม..." class="w-full border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500 bg-gray-50">
+            <button @click="addCustomerKeyword()" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 whitespace-nowrap">+ เพิ่ม</button>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5 pt-1 min-h-[26px]">
+            <template x-for="(kw, index) in customerKeywords" :key="index">
+              <span class="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 text-[11px] px-2 py-0.5 rounded-full font-medium">
+                <span x-text="kw"></span>
+                <button @click="customerKeywords.splice(index, 1)" class="text-blue-400 hover:text-blue-700 font-bold">×</button>
+              </span>
+            </template>
+            <template x-if="customerKeywords.length === 0">
+              <span class="text-[11px] text-gray-400 italic">พิมพ์ค้นหาได้ทันที หรือเพิ่มหลายคำได้</span>
+            </template>
+          </div>
+        </div>
+
+        <!-- Keyword Search Box 2: Admin -->
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-between space-y-2">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-bold text-gray-700">🔍 ค้นหา Keyword (แอดมินพิมพ์)</label>
+            <div class="inline-flex rounded-md shadow-xs bg-gray-100 p-0.5 text-[10px]">
+              <button @click="adminMatchMode = 'OR'" :class="adminMatchMode === 'OR' ? 'bg-blue-600 text-white font-bold' : 'text-gray-600 hover:text-gray-900'" class="px-2 py-0.5 rounded transition">OR</button>
+              <button @click="adminMatchMode = 'AND'" :class="adminMatchMode === 'AND' ? 'bg-blue-600 text-white font-bold' : 'text-gray-600 hover:text-gray-900'" class="px-2 py-0.5 rounded transition">AND</button>
+            </div>
+          </div>
+
+          <div class="flex gap-1">
+            <input type="text" x-model="tempAdminKeyword" @keydown.enter.prevent="addAdminKeyword()" placeholder="พิมพ์ค้นหา หรือกด Enter เพื่อเพิ่ม..." class="w-full border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500 bg-gray-50">
+            <button @click="addAdminKeyword()" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 whitespace-nowrap">+ เพิ่ม</button>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5 pt-1 min-h-[26px]">
+            <template x-for="(kw, index) in adminKeywords" :key="index">
+              <span class="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 text-[11px] px-2 py-0.5 rounded-full font-medium">
+                <span x-text="kw"></span>
+                <button @click="adminKeywords.splice(index, 1)" class="text-green-400 hover:text-green-700 font-bold">×</button>
+              </span>
+            </template>
+            <template x-if="adminKeywords.length === 0">
+              <span class="text-[11px] text-gray-400 italic">พิมพ์ค้นหาได้ทันที หรือเพิ่มหลายคำได้</span>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 1: DASHBOARD -->
+      <div x-show="currentTab === 'dashboard'" class="space-y-6">
+       
+        <template x-if="selectedProcess">
+          <div class="bg-blue-50 border border-blue-200 p-3 rounded-lg flex justify-between items-center text-xs text-blue-900">
+            <div>
+              กำลังกรองเฉพาะ Process: <span class="font-bold text-blue-700" x-text="selectedProcess"></span>
+            </div>
+            <button @click="selectedProcess = ''" class="bg-blue-600 text-white px-2.5 py-1 rounded hover:bg-blue-700 font-medium">แสดงทั้งหมด</button>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+         
+          <!-- Customer Category -->
+          <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 flex flex-col">
+            <h3 class="font-bold text-gray-700 mb-3">💬 ประเภทสิ่งที่ลูกค้าทักมา (ai_Customer) - เรียงตามความถี่</h3>
+            <div class="space-y-2 max-h-[580px] overflow-y-auto pr-1">
+              <template x-for="item in sortedCustomerCategoryCount">
+                <div @click="selectedCategory = (selectedCategory === item.category ? '' : item.category)"
+                     :class="selectedCategory === item.category ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-gray-50 hover:bg-gray-100'"
+                     class="p-3.5 rounded-lg border cursor-pointer flex justify-between items-center transition">
+                  <span class="text-sm font-semibold text-gray-800" x-text="item.category"></span>
+                  <span class="bg-blue-100 text-blue-800 text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap ml-2" x-text="item.count + ' เคส'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Admin Response -->
+          <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 flex flex-col">
+            <div class="flex justify-between items-center mb-2">
+              <h3 class="font-bold text-gray-700">👑 การตอบกลับของ Admin</h3>
+            </div>
+            <div class="mb-3 p-2.5 bg-blue-50 rounded-lg border border-blue-200 text-xs text-blue-900 font-medium">
+              หมวดหมู่ที่เลือก: <span class="font-bold text-blue-700" x-text="selectedCategory || 'ยังไม่ได้เลือก (แสดงทั้งหมด)'"></span>
+            </div>
+
+            <template x-if="sortedAdminResponseCount.length === 0">
+              <p class="text-sm text-gray-400 italic py-20 text-center">ไม่มีข้อมูลการตอบกลับในเงื่อนไขนี้</p>
+            </template>
+
+
+            <div class="space-y-3 max-h-[510px] overflow-y-auto pr-1">
+              <template x-for="item in sortedAdminResponseCount">
+                <div class="p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-2 shadow-xs">
+                  <div class="flex justify-between items-start gap-3">
+                    <span class="text-base font-bold text-gray-900 leading-snug" x-text="item.adminResp"></span>
+                    <span class="bg-green-100 text-green-800 text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap" x-text="item.count + ' ครั้ง'"></span>
+                  </div>
+                 
+                  <div class="pt-2 border-t border-gray-200 space-y-1">
+                    <p class="text-xs font-semibold text-gray-500">Process ที่เกี่ยวข้อง:</p>
+                    <div class="pl-2 space-y-1.5">
+                      <template x-for="procObj in item.processDetails">
+                        <div class="text-xs text-gray-700 space-y-1 bg-white p-2 rounded border border-gray-100">
+                          <div class="font-bold text-blue-600" x-text="'- ' + procObj.name"></div>
+                          <div class="pl-3 flex flex-wrap gap-1.5">
+                            <template x-for="chat in procObj.chats">
+                              <button @click="goToChat(chat)" class="bg-gray-100 hover:bg-blue-100 hover:text-blue-700 text-gray-800 px-2 py-0.5 rounded text-[11px] font-medium border border-gray-200 transition flex items-center gap-1">
+                                <span>👤</span>
+                                <span x-text="chat.customer_name"></span>
+                              </button>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process Summary (Bottom) -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-gray-700">📈 สรุปสถานะ Process (ai_Process) - เรียงตามความถี่</h3>
+            <button @click="selectedProcess = ''"
+                    :class="selectedProcess === '' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-2.5 py-1 rounded text-xs font-semibold transition">
+              ทั้งหมด (<span x-text="filteredData.length"></span>)
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <template x-for="item in sortedProcessSummary">
+              <div @click="selectedProcess = (selectedProcess === item.processName ? '' : item.processName)"
+                   :class="selectedProcess === item.processName ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'"
+                   class="p-4 rounded-lg border cursor-pointer transition">
+                <p class="text-sm text-gray-700 font-semibold" x-text="item.processName"></p>
+                <div class="flex justify-between items-baseline mt-2">
+                  <span class="text-xl font-bold text-gray-900" x-text="item.count + ' เคส'"></span>
+                  <span class="text-sm text-blue-600 font-bold" x-text="item.percent + '%'"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+     <!-- TAB 2: CHAT ROOM VIEW -->
+      <div x-show="currentTab === 'chat'" class="space-y-4">
+       
+        <!-- Chat Main Area -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 md:col-span-1 max-h-[600px] overflow-y-auto">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="font-bold text-gray-700">รายชื่อแชทล่าสุด</h3>
+              <span class="text-xs text-gray-400" x-text="chatsByProcessFilter.length + ' แชท'"></span>
+            </div>
+            <div class="space-y-2">
+              <template x-for="chat in chatsByProcessFilter">
+                <div @click="activeChat = chat"
+                     :class="activeChat && activeChat.conversation_id === chat.conversation_id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'"
+                     class="p-3 rounded-lg border cursor-pointer transition">
+                  <div class="flex justify-between items-start">
+                    <p class="font-bold text-sm text-gray-800" x-text="chat.customer_name"></p>
+                    <span class="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded" x-text="chat.ai_Process"></span>
+                  </div>
+                  <p class="text-xs text-gray-500 truncate mt-1" x-text="'ล่าสุด: ' + formatReadableDate(chat.latest_message_time || chat.Time || '')"></p>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 md:col-span-2 flex flex-col h-[600px]">
+            <template x-if="!activeChat">
+              <div class="m-auto text-gray-400 text-center">เลือกแชททางด้านซ้ายเพื่อดูประวัติการสนทนา</div>
+            </template>
+            <template x-if="activeChat">
+              <div class="flex flex-col h-full">
+                <div class="border-b pb-3 mb-3 flex justify-between items-center">
+                  <div>
+                    <div class="flex items-center gap-2">
+  <h3 class="font-bold text-lg text-gray-800" x-text="activeChat.customer_name"></h3>
+  <button @click="
+    navigator.clipboard.writeText(activeChat.customer_name);
+    $el.innerText = 'Copied!';
+    setTimeout(() => $el.innerHTML = `<svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3'></path></svg>`, 1500);
+  " class="p-1 text-gray-400 hover:text-blue-600 bg-gray-100 hover:bg-blue-50 rounded transition flex items-center justify-center text-xs" title="Copy Name">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+    </svg>
+  </button>
+</div>
+                    <p class="text-xs text-gray-500" x-text="'ID: ' + activeChat.conversation_id + ' | Process: ' + activeChat.ai_Process"></p>
+                  </div>
+                </div>
+                <div class="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-lg border space-y-3">
+                  <template x-for="msgGroup in parseChatMessages(activeChat.message_text)">
+                    <div class="space-y-2">
+                      <template x-if="msgGroup.date">
+                        <div class="flex justify-center my-3">
+                          <span class="bg-gray-200 text-gray-600 text-[11px] px-3 py-1 rounded-full font-medium shadow-xs" x-text="formatDateOnly(msgGroup.date)"></span>
+                        </div>
+                      </template>
+                     
+                      <div :class="msgGroup.sender === 'Admin' ? 'justify-end' : 'justify-start'" class="flex items-end gap-2">
+                        <template x-if="msgGroup.sender !== 'Admin'">
+                          <div class="max-w-[75%] flex items-end gap-1.5">
+                            <div class="bg-white text-gray-800 p-3 rounded-2xl rounded-bl-xs shadow-xs border border-gray-100 text-xs whitespace-pre-wrap font-sans" x-text="msgGroup.text"></div>
+                            <span class="text-[10px] text-gray-400 whitespace-nowrap mb-1" x-text="msgGroup.time"></span>
+                          </div>
+                        </template>
+
+
+                        <template x-if="msgGroup.sender === 'Admin'">
+                          <div class="max-w-[75%] flex items-end gap-1.5 justify-end">
+                            <span class="text-[10px] text-gray-400 whitespace-nowrap mb-1" x-text="msgGroup.time"></span>
+                            <div class="bg-blue-600 text-white p-3 rounded-2xl rounded-br-xs shadow-xs text-xs whitespace-pre-wrap font-sans" x-text="msgGroup.text"></div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Process Summary (Bottom for Tab 2) -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-gray-700">📈 สรุปสถานะ Process (ai_Process) - เรียงตามความถี่</h3>
+            <button @click="selectedChatProcess = ''"
+                    :class="selectedChatProcess === '' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-2.5 py-1 rounded text-xs font-semibold transition">
+              ทั้งหมด (<span x-text="filteredData.length"></span>)
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <template x-for="item in sortedProcessSummary">
+              <div @click="selectedChatProcess = (selectedChatProcess === item.processName ? '' : item.processName)"
+                   :class="selectedChatProcess === item.processName ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'"
+                   class="p-4 rounded-lg border cursor-pointer transition">
+                <p class="text-sm text-gray-700 font-semibold" x-text="item.processName"></p>
+                <div class="flex justify-between items-baseline mt-2">
+                  <span class="text-xl font-bold text-gray-900" x-text="item.count + ' เคส'"></span>
+                  <span class="text-sm text-blue-600 font-bold" x-text="item.percent + '%'"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+<div x-show="currentTab === 'customer'">
+    <!-- TAB 3: CUSTOMER DATA -->
+   
+    <!-- Customer Table with Scroll & Status Filters -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-4">
+     
+      <!-- ส่วนหัว: ค้นหา และ ปุ่มตัวกรองทั้งหมดรวมกัน -->
+      <div class="p-4 border-b flex flex-col gap-3">
+       
+        <!-- แถวที่ 1: หัวข้อหลัก และ ช่องค้นหาชื่อลูกค้า -->
+        <div class="flex flex-wrap justify-between items-center gap-3">
+          <div class="flex items-center gap-3">
+            <h3 class="font-bold text-gray-700">ฐานข้อมูลลูกค้าทั้งหมด</h3>
+            <div class="relative">
+              <input type="text" x-model="customerNameSearch" placeholder="🔍 ค้นหาชื่อลูกค้า..." class="border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500 bg-gray-50 w-48 sm:w-64">
+              <template x-if="customerNameSearch">
+                <button @click="customerNameSearch = ''" class="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 text-xs font-bold">×</button>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- แถวที่ 2: กรองสถานะ และ กรองช่องทาง พร้อมปุ่ม Export จัดระเบียบในบรรทัดเดียวกัน -->
+        <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-gray-100">
+         
+          <div class="flex flex-wrap items-center gap-4">
+           
+            <!-- กลุ่มกรองสถานะ -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-gray-500 font-medium">สถานะ:</span>
+              <button @click="selectedStatusFilter = (selectedStatusFilter === 'New' ? '' : 'New')"
+                      :class="selectedStatusFilter === 'New' ? 'bg-green-600 text-white ring-2 ring-green-300' : 'bg-green-50 text-green-800 hover:bg-green-100'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-green-200">
+                <span>New</span>
+                <span class="bg-white text-green-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="statusCounts.New"></span>
+              </button>
+
+
+              <button @click="selectedStatusFilter = (selectedStatusFilter === 'Lead' ? '' : 'Lead')"
+                      :class="selectedStatusFilter === 'Lead' ? 'bg-amber-600 text-white ring-2 ring-amber-300' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-amber-200">
+                <span>Lead</span>
+                <span class="bg-white text-amber-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="statusCounts.Lead"></span>
+              </button>
+
+
+              <button @click="selectedStatusFilter = (selectedStatusFilter === 'Old' ? '' : 'Old')"
+                      :class="selectedStatusFilter === 'Old' ? 'bg-gray-600 text-white ring-2 ring-gray-300' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-gray-200">
+                <span>Old</span>
+                <span class="bg-white text-gray-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="statusCounts.Old"></span>
+              </button>
+
+
+              <button @click="selectedStatusFilter = ''"
+                      class="text-xs text-blue-600 hover:underline font-medium ml-1 transition-opacity"
+                      :class="selectedStatusFilter ? 'opacity-100 visible' : 'opacity-0 invisible'">
+                ล้าง
+              </button>
+            </div>
+
+            <!-- เส้นคั่นกลางเล็กๆ ระหว่างกลุ่มสถานะกับช่องทาง -->
+            <div class="hidden sm:block h-4 w-px bg-gray-200"></div>
+
+
+            <!-- กลุ่มกรองช่องทาง -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-gray-500 font-medium">ช่องทาง:</span>
+             
+              <button @click="toggleGlobalChannelFilter('Ads')"
+                      :class="selectedChannelFilter === 'Ads' ? 'bg-blue-600 text-white ring-2 ring-blue-300' : 'bg-blue-50 text-blue-800 hover:bg-blue-100'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-blue-200">
+                <span>Ads</span>
+                <span class="bg-white text-blue-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="channelCounts.Ads"></span>
+              </button>
+
+
+              <button @click="toggleGlobalChannelFilter('Organic')"
+                      :class="selectedChannelFilter === 'Organic' ? 'bg-emerald-600 text-white ring-2 ring-emerald-300' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-emerald-200">
+                <span>Organic</span>
+                <span class="bg-white text-emerald-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="channelCounts.Organic"></span>
+              </button>
+
+
+              <button @click="toggleGlobalChannelFilter('Link/QR')"
+                      :class="selectedChannelFilter === 'Link/QR' ? 'bg-purple-600 text-white ring-2 ring-purple-300' : 'bg-purple-50 text-purple-800 hover:bg-purple-100'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-purple-200">
+                <span>Link/QR</span>
+                <span class="bg-white text-purple-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="channelCounts['Link/QR']"></span>
+              </button>
+
+              <button @click="toggleGlobalChannelFilter('Out of Data Center')"
+                      :class="selectedChannelFilter === 'Out of Data Center' ? 'bg-gray-600 text-white ring-2 ring-gray-300' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'"
+                      class="px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-gray-200">
+                <span>Out of Data Center</span>
+                <span class="bg-white text-gray-800 px-1.5 py-0.2 rounded-full text-[10px] min-w-[24px] inline-block text-center" x-text="channelCounts['Out of Data Center']"></span>
+              </button>
+
+              <button @click="selectedChannelFilter = ''"
+                      class="text-xs text-blue-600 hover:underline font-medium ml-1 transition-opacity"
+                      :class="selectedChannelFilter ? 'opacity-100 visible' : 'opacity-0 invisible'">
+                ล้าง
+              </button>
+            </div>
+
+          </div>
+
+          <!-- ปุ่ม Export ขวาสุด -->
+          <button @click="exportCustomerDataToExcel()" class="bg-green-600 hover:bg-green-700 text-white font-medium text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Export
+          </button>
+
+
+        </div>
+      </div>
+
+      <!-- Scrollable Table Container -->
+      <div class="max-h-[550px] overflow-y-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+          <thead class="bg-gray-50 text-gray-500 text-left sticky top-0 z-10 shadow-xs">
+            <tr>
+              <th class="p-3 bg-gray-50">Customer ID</th>
+              <th class="p-3 bg-gray-50">Name</th>
+              <th class="p-3 bg-gray-50">New/Old</th>
+              <th class="p-3 bg-gray-50">First Message</th>
+              <th class="p-3 bg-gray-50">Latest Message</th>
+              <th class="p-3 bg-gray-50">Channel</th>
+              <th class="p-3 bg-gray-50">Process ล่าสุด</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 bg-white">
+            <template x-for="cust in customersByProcessFilter">
+              <tr class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-600" x-text="cust.conversation_id"></td>
+                <td class="p-3">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-blue-600 hover:underline cursor-pointer" @click="goToChat(cust)" x-text="cust.customer_name"></span>
+                    <button @click.stop="
+                      navigator.clipboard.writeText(cust.customer_name);
+                      $el.innerText = 'Copied!';
+                      setTimeout(() => $el.innerHTML = `<svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3'></path></svg>`, 1500);
+                    " class="p-1 text-gray-400 hover:text-blue-600 bg-gray-100 hover:bg-blue-50 rounded transition flex items-center justify-center" title="Copy Name">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
+                        :class="{
+                          'bg-green-100 text-green-800': getCustomerStatus(cust.first_message_time, cust.latest_message_time).type === 'New',
+                          'bg-amber-100 text-amber-800': getCustomerStatus(cust.first_message_time, cust.latest_message_time).type === 'Lead',
+                          'bg-gray-100 text-gray-700': getCustomerStatus(cust.first_message_time, cust.latest_message_time).type === 'Old'
+                        }"
+                        x-text="getCustomerStatus(cust.first_message_time, cust.latest_message_time).text">
+                  </span>
+                </td>
+                <td class="p-3 text-gray-600 text-xs whitespace-nowrap" x-text="formatReadableDate(cust.first_message_time)"></td>
+                <td class="p-3 text-gray-600 text-xs whitespace-nowrap" x-text="formatReadableDate(cust.latest_message_time)"></td>
+                <td class="p-3 text-gray-600" x-text="cust.channel_type"></td>
+                <td class="p-3 text-gray-600" x-text="cust.ai_Process"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+
+    <!-- Process Summary (Bottom for Tab 3) -->
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-gray-700">📈 สรุปสถานะ Process (ai_Process) - เรียงตามความถี่</h3>
+        <button @click="selectedCustomerProcess = ''"
+                :class="selectedCustomerProcess === '' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                class="px-2.5 py-1 rounded text-xs font-semibold transition">
+          ทั้งหมด (<span x-text="filteredData.length"></span>)
+        </button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <template x-for="item in sortedProcessSummary">
+          <div @click="selectedCustomerProcess = (selectedCustomerProcess === item.processName ? '' : item.processName)"
+               :class="selectedCustomerProcess === item.processName ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'"
+               class="p-4 rounded-lg border cursor-pointer transition">
+            <p class="text-sm text-gray-700 font-semibold" x-text="item.processName"></p>
+            <div class="flex justify-between items-baseline mt-2">
+              <span class="text-xl font-bold text-gray-900" x-text="item.count + ' เคส'"></span>
+              <span class="text-sm text-blue-600 font-bold" x-text="item.percent + '%'"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+</div>
+<!-- =========================================================
+     TAB 4 : KEYWORD DASHBOARD
+========================================================= -->
+<div x-show="currentTab === 'keywords'" class="space-y-4">
+
+  <!-- TOP -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- ================= CUSTOMER ================= -->
+    <div class="lg:col-span-1 bg-white rounded-lg shadow-sm border border-gray-200">
+
+      <div class="p-4 border-b flex justify-between items-center">
+        <div>
+          <h3 class="font-bold text-gray-800">
+            🔍 Customer Keywords
+          </h3>
+          <p class="text-[11px] text-gray-400 mt-1">
+            วิเคราะห์จากข้อความที่ลูกค้าพิมพ์
+          </p>
+        </div>
+
+        <button
+          @click="addKeywordList('customer')"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+          + Keyword List
+        </button>
+      </div>
+
+      <div class="p-3 space-y-3 max-h-[650px] overflow-y-auto">
+
+        <template x-for="list in customerKeywordListsDisplay" :key="list.id">
+
+          <div
+            @click="activeKeywordListId = list.id"
+            :class="activeKeywordListId === list.id
+              ? 'border-blue-500 ring-2 ring-blue-100'
+              : 'border-gray-200'"
+            class="border rounded-lg p-3 transition cursor-pointer">
+
+            <!-- HEADER -->
+            <div class="flex justify-between items-center mb-2">
+
+              <span class="text-xs font-bold text-gray-700">
+                Customer List
+                <span x-text="'#' + list.id"></span>
+              </span>
+
+              <div class="flex gap-1">
+
+                <button
+                  @click.stop="list.mode = 'OR'"
+                  :class="list.mode === 'OR'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-500'"
+                  class="px-2 py-1 rounded text-[10px] font-bold">
+                  OR
+                </button>
+
+                <button
+                  @click.stop="list.mode = 'AND'"
+                  :class="list.mode === 'AND'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-500'"
+                  class="px-2 py-1 rounded text-[10px] font-bold">
+                  AND
+                </button>
+
+                <button
+                  @click.stop="removeKeywordList('customer', list.id)"
+                  class="px-2 py-1 rounded text-[10px] text-red-500 hover:bg-red-50">
+                  ×
+                </button>
+
+              </div>
+            </div>
+
+
+            <!-- INPUT -->
+            <div class="flex gap-1">
+
+              <input
+                type="text"
+                x-model="list.tempKeyword"
+                 @focus="
+                  activeKeywordListId = list.id;
+                  activeKeywordSide = 'customer';
+                 "
+                @click.stop
+                @keydown.enter.prevent="addKeywordToList(list)"
+                placeholder="พิมพ์ Keyword..."
+                class="flex-1 border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+
+              <button
+                @click.stop="addKeywordToList(list)"
+                class="bg-blue-600 text-white px-2.5 rounded text-xs">
+                +
+              </button>
+
+            </div>
+
+
+            <!-- KEYWORDS -->
+            <div class="flex flex-wrap gap-1.5 mt-2">
+
+              <template x-for="(kw,index) in list.keywords" :key="index">
+
+                <span
+                  class="bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 text-[11px] flex items-center gap-1">
+
+                  <span x-text="kw"></span>
+
+                  <button
+                    @click.stop="removeKeywordFromList(list,index)"
+                    class="font-bold text-blue-400">
+                    ×
+                  </button>
+
+                </span>
+
+              </template>
+
+              <template x-if="list.keywords.length === 0">
+
+                <span class="text-[10px] text-gray-400 italic">
+                  ยังไม่มี Keyword
+                </span>
+
+              </template>
+
+            </div>
+
+
+            <!-- RESULT -->
+            <div class="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center">
+
+              <span class="text-xs text-gray-500">
+                แชทที่พบ
+              </span>
+
+              <div class="text-right">
+
+                <span
+                  class="font-bold text-blue-600"
+                  x-text="keywordListCount(list) + ' / ' + keywordTotalChats">
+                </span>
+
+                <span
+                  class="ml-1 text-xs text-gray-400"
+                  x-text="'(' + keywordListPercent(list) + '%)'">
+                </span>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </template>
+
+
+        <!-- EMPTY -->
+        <template x-if="keywordLists.customer.length === 0">
+
+          <div class="text-center py-12 text-gray-400 text-xs">
+
+            ยังไม่มี Customer Keyword List
+
+            <br>
+
+            กด <b>+ Keyword List</b> เพื่อเริ่มต้น
+
+          </div>
+
+        </template>
+
+      </div>
+
+    </div>
+
+
+    <!-- ================= ADMIN ================= -->
+    <div class="lg:col-span-1 bg-white rounded-lg shadow-sm border border-gray-200">
+
+      <div class="p-4 border-b flex justify-between items-center">
+
+        <div>
+          <h3 class="font-bold text-gray-800">
+            👑 Admin Keywords
+          </h3>
+
+          <p class="text-[11px] text-gray-400 mt-1">
+            วิเคราะห์จากข้อความที่แอดมินพิมพ์
+          </p>
+        </div>
+
+        <button
+          @click="addKeywordList('admin')"
+          class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+          + Keyword List
+        </button>
+
+      </div>
+
+
+      <div class="p-3 space-y-3 max-h-[650px] overflow-y-auto">
+
+        <template x-for="list in adminKeywordListsDisplay" :key="list.id">
+
+          <div
+            @click="activeKeywordListId = list.id"
+            :class="activeKeywordListId === list.id
+              ? 'border-green-500 ring-2 ring-green-100'
+              : 'border-gray-200'"
+            class="border rounded-lg p-3 transition cursor-pointer">
+
+
+            <div class="flex justify-between items-center mb-2">
+
+              <span class="text-xs font-bold text-gray-700">
+                Admin List
+                <span x-text="'#' + list.id"></span>
+              </span>
+
+
+              <div class="flex gap-1">
+
+                <button
+                  @click.stop="list.mode = 'OR'"
+                  :class="list.mode === 'OR'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-500'"
+                  class="px-2 py-1 rounded text-[10px] font-bold">
+                  OR
+                </button>
+
+                <button
+                  @click.stop="list.mode = 'AND'"
+                  :class="list.mode === 'AND'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-500'"
+                  class="px-2 py-1 rounded text-[10px] font-bold">
+                  AND
+                </button>
+
+                <button
+                  @click.stop="removeKeywordList('admin', list.id)"
+                  class="px-2 py-1 rounded text-[10px] text-red-500 hover:bg-red-50">
+                  ×
+                </button>
+
+              </div>
+
+            </div>
+
+
+            <div class="flex gap-1">
+
+              <input
+                type="text"
+                x-model="list.tempKeyword"
+                 @focus="
+                 activeKeywordListId = list.id;
+                 activeKeywordSide = 'admin';
+                 "
+                @click.stop
+                @keydown.enter.prevent="addKeywordToList(list)"
+                placeholder="พิมพ์ Keyword..."
+                class="flex-1 border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-green-500">
+
+              <button
+                @click.stop="addKeywordToList(list)"
+                class="bg-green-600 text-white px-2.5 rounded text-xs">
+                +
+              </button>
+
+            </div>
+
+
+            <div class="flex flex-wrap gap-1.5 mt-2">
+
+              <template x-for="(kw,index) in list.keywords" :key="index">
+
+                <span
+                  class="bg-green-50 text-green-700 border border-green-200 rounded-full px-2 py-0.5 text-[11px] flex items-center gap-1">
+
+                  <span x-text="kw"></span>
+
+                  <button
+                    @click.stop="removeKeywordFromList(list,index)"
+                    class="font-bold text-green-400">
+                    ×
+                  </button>
+
+                </span>
+
+              </template>
+
+            </div>
+
+
+            <div class="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center">
+
+              <span class="text-xs text-gray-500">
+                แชทที่พบ
+              </span>
+
+              <div class="text-right">
+
+                <span
+                  class="font-bold text-green-600"
+                  x-text="keywordListCount(list) + ' / ' + keywordTotalChats">
+                </span>
+
+                <span
+                  class="ml-1 text-xs text-gray-400"
+                  x-text="'(' + keywordListPercent(list) + '%)'">
+                </span>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </template>
+
+
+        <template x-if="keywordLists.admin.length === 0">
+
+          <div class="text-center py-12 text-gray-400 text-xs">
+
+            ยังไม่มี Admin Keyword List
+
+            <br>
+
+            กด <b>+ Keyword List</b> เพื่อเริ่มต้น
+
+          </div>
+
+        </template>
+
+      </div>
+
+    </div>
+
+
+<!-- ================= RIGHT KEYWORD SEARCH ================= -->
+
+    <div class="lg:col-span-1 bg-white rounded-lg shadow-sm border border-gray-200">
+
+      <div class="p-4 border-b">
+
+        <h3 class="font-bold text-gray-800">
+          🔎 Keyword Search Result
+        </h3>
+
+       <p class="text-[11px] text-gray-400 mt-1">
+          คำที่เกี่ยวข้อง เรียงตามจำนวนแชท
+       </p>
+
+      </div>
+
+
+      <div class="p-4">
+
+        <template x-if="keywordSearchResults.length === 0">
+
+          <div class="text-center py-16 text-gray-400 text-xs">
+
+            เลือก Keyword List
+            <br>
+            เพื่อดูคำที่ถูกใช้บ่อย
+
+          </div>
+
+        </template>
+
+
+        <div class="space-y-2 max-h-[580px] overflow-y-auto">
+
+          <template x-for="(item,index) in keywordSearchResults" :key="index">
+
+            <div
+              class="flex justify-between items-center p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+
+              <div class="flex items-center gap-2 min-w-0">
+
+                <span
+                  class="text-xs font-bold text-gray-400 w-5"
+                  x-text="index + 1">
+                </span>
+
+                <span
+                  class="text-sm font-semibold text-gray-800 truncate"
+                  x-text="item.keyword">
+                </span>
+
+              </div>
+
+
+              <div class="text-right whitespace-nowrap">
+
+                <span
+                  class="text-xs font-bold text-blue-600"
+                  x-text="item.count + ' แชท'">
+                </span>
+
+                <span
+                  class="text-[10px] text-gray-400 ml-1"
+                  x-text="item.percent + '%'">
+                </span>
+
+              </div>
+
+            </div>
+
+          </template>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+<!-- =========================================================
+     TAB 5 : REPORT
+========================================================= -->
+<div x-show="currentTab === 'report'" class="space-y-6">
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div><h2 class="text-xl font-bold text-gray-800">📊 Report</h2><p class="text-xs text-gray-500 mt-1">รายงานวิเคราะห์ข้อมูลตาม Global Filter และ Report Filter</p></div>
+      <div class="text-right"><div class="text-xs text-gray-500">จำนวนแชทที่ใช้วิเคราะห์</div><div class="text-3xl font-bold text-blue-600" x-text="reportFilteredData.length"></div><div class="text-[11px] text-gray-400">แชท</div></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+      <div class="flex justify-between items-center mb-4"><div><h3 class="font-bold text-gray-800">1) Channels</h3><p class="text-[11px] text-gray-400">จำนวนและสัดส่วนตามช่องทาง</p></div><span class="text-xs text-gray-400" x-text="reportFilteredData.length + ' แชท'"></span></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-center"><div class="report-pie-wrap"><canvas id="reportChannelPie"></canvas></div><div class="space-y-2">
+        <template x-for="item in reportChannelStats" :key="item.name"><button @click="toggleReportChannel(item.name)" class="w-full text-left p-3 rounded-lg border-2 border-l-4 transition" :class="reportSelectedChannel.includes(item.name) ? 'bg-blue-50 ring-2 ring-blue-100' : 'bg-gray-50 hover:bg-gray-100'" :style="{borderLeftColor:item.color, borderTopColor:reportSelectedChannel.includes(item.name)?item.color:'#e5e7eb', borderRightColor:reportSelectedChannel.includes(item.name)?item.color:'#e5e7eb', borderBottomColor:reportSelectedChannel.includes(item.name)?item.color:'#e5e7eb'}">
+          <div class="flex justify-between items-center"><span class="font-semibold text-sm" x-text="item.name"></span><span class="text-3xl font-extrabold" :style="{color:item.color}" x-text="item.percent + '%'" ></span></div><div class="flex justify-between items-end mt-1"><span class="text-[11px] text-gray-400">จำนวนแชท</span><span class="text-sm font-bold text-gray-700" x-text="item.count"></span></div>
+        </button></template>
+      </div></div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+      <div class="flex justify-between items-center mb-4"><div><h3 class="font-bold text-gray-800">2) Status</h3><p class="text-[11px] text-gray-400">New / Lead / Old</p></div><span class="text-xs text-gray-400" x-text="reportFilteredData.length + ' แชท'"></span></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-center"><div class="report-pie-wrap"><canvas id="reportStatusPie"></canvas></div><div class="space-y-2">
+        <template x-for="item in reportStatusStats" :key="item.name"><button @click="toggleReportStatus(item.name)" class="w-full text-left p-3 rounded-lg border-2 border-l-4 transition" :class="reportSelectedStatus.includes(item.name) ? 'bg-amber-50 ring-2 ring-amber-100' : 'bg-gray-50 hover:bg-gray-100'" :style="{borderLeftColor:item.color, borderTopColor:reportSelectedStatus.includes(item.name)?item.color:'#e5e7eb', borderRightColor:reportSelectedStatus.includes(item.name)?item.color:'#e5e7eb', borderBottomColor:reportSelectedStatus.includes(item.name)?item.color:'#e5e7eb'}">
+          <div class="flex justify-between items-center"><span class="font-semibold text-sm" x-text="item.name"></span><span class="text-3xl font-extrabold" :style="{color:item.color}" x-text="item.percent + '%'" ></span></div><div class="flex justify-between items-end mt-1"><span class="text-[11px] text-gray-400">จำนวนแชท</span><span class="text-sm font-bold text-gray-700" x-text="item.count"></span></div>
+        </button></template>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">📈 Status Frequency Distribution</h3><p class="text-[11px] text-gray-400 mb-4">แจกแจงระยะเวลาตั้งแต่ First Message ถึง Latest Message</p><div class="h-[340px]"><canvas id="reportStatusFrequency"></canvas></div></div>
+
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+    <div class="flex justify-between items-center mb-4"><div><h3 class="font-bold text-gray-800">3) Process</h3><p class="text-[11px] text-gray-400">ai_Process ที่มีอยู่ภายใต้ Global Filter</p></div><span class="text-xs text-gray-400" x-text="reportFilteredData.length + ' แชท'"></span></div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5"><div class="report-pie-wrap" style="height:320px"><canvas id="reportProcessPie"></canvas></div><div class="lg:col-span-2 space-y-2 max-h-[330px] overflow-y-auto">
+      <template x-for="item in reportProcessStats" :key="item.name"><button @click="toggleReportProcess(item.name)" class="w-full text-left p-3 rounded-lg border-2 border-l-4 transition" :class="reportSelectedProcess.includes(item.name) ? 'bg-green-50 ring-2 ring-green-100' : 'bg-gray-50 hover:bg-gray-100'" :style="{borderLeftColor:item.color, borderTopColor:reportSelectedProcess.includes(item.name)?item.color:'#e5e7eb', borderRightColor:reportSelectedProcess.includes(item.name)?item.color:'#e5e7eb', borderBottomColor:reportSelectedProcess.includes(item.name)?item.color:'#e5e7eb'}"><div class="flex justify-between items-center"><span class="text-sm font-semibold" x-text="item.name"></span><span class="text-3xl font-extrabold" :style="{color:item.color}" x-text="item.percent + '%'" ></span></div><div class="flex justify-end mt-1"><span class="text-sm font-bold text-gray-700" x-text="item.count + ' แชท'"></span></div></button></template>
+    </div></div>
+  </div>
+
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-5"><div class="flex flex-col md:flex-row md:justify-between md:items-center gap-3"><div><h3 class="font-bold text-blue-900">4) Filter Result</h3><p class="text-xs text-blue-700 mt-1">กดกล่องในข้อ 1–3 เพื่อรวมข้อมูลแบบ AND</p></div><button @click="clearReportFilters()" class="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100">ล้าง Report Filter</button></div>
+    <div class="flex flex-wrap gap-2 mt-4"><template x-for="name in reportSelectedChannel" :key="'ch-'+name"><button @click="toggleReportChannel(name)" class="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-blue-600" x-text="'Channel: ' + name + ' ×'"></button></template><template x-for="name in reportSelectedStatus" :key="'st-'+name"><button @click="toggleReportStatus(name)" class="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600" x-text="'Status: ' + name + ' ×'"></button></template><template x-for="name in reportSelectedProcess" :key="'pr-'+name"><button @click="toggleReportProcess(name)" class="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-green-600" x-text="'Process: ' + name + ' ×'"></button></template><template x-if="!reportSelectedChannel.length && !reportSelectedStatus.length && !reportSelectedProcess.length"><span class="text-xs text-blue-600 italic">ยังไม่ได้เลือก Report Filter</span></template></div>
+    <div class="mt-4 bg-white rounded-lg border border-blue-200 p-4 flex items-center justify-between"><div><div class="text-xs text-gray-500">ผลลัพธ์หลัง Filter</div><div class="text-3xl font-bold text-blue-600" x-text="reportFilteredData.length"></div></div><div class="text-xs text-gray-400">แชท</div></div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6"><div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">5) TIME ANALYSIS — By Date</h3><p class="text-[11px] text-gray-400 mb-4">จำนวนแชทตามวันที่</p><div class="h-[320px]"><canvas id="reportDateFrequency"></canvas></div></div><div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">TIME ANALYSIS — By Time</h3><p class="text-[11px] text-gray-400 mb-4">จำนวนแชทตามช่วงเวลา</p><div class="h-[320px]"><canvas id="reportTimeFrequency"></canvas></div></div></div>
+
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">6) ประเภทสิ่งที่ลูกค้าทักมา</h3><p class="text-[11px] text-gray-400 mb-4">ai_Customer</p><div class="h-[430px]"><canvas id="reportCustomerBar"></canvas></div></div>
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">7) การตอบกลับของ Admin</h3><p class="text-[11px] text-gray-400 mb-4">ai_Admin</p><div class="h-[430px]"><canvas id="reportAdminBar"></canvas></div></div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6"><div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">8) RANK Keywords Customer</h3><p class="text-[11px] text-gray-400 mb-4">Keyword จากกล่อง Customer ในหน้า 4</p><div class="h-[430px]"><canvas id="reportCustomerKeywordBar"></canvas></div></div><div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800">9) RANK Keywords Admin</h3><p class="text-[11px] text-gray-400 mb-4">Keyword จากกล่อง Admin ในหน้า 4</p><div class="h-[430px]"><canvas id="reportAdminKeywordBar"></canvas></div></div></div>
+</div>
+  <script>
+    function dashboardData() {
+      return {
+        currentTab: 'dashboard',
+        // ===============================
+// TAB 4 : KEYWORD DASHBOARD
+// ===============================
+
+keywordLists: {
+  customer: [],
+  admin: []
+},
+
+activeKeywordListId: null,
+
+keywordListCounter: 0,
+
+activeKeywordSide: 'customer',
+
+// Keep empty Keyword List input boxes at the top of each Page 4 column.
+// The underlying arrays are not mutated; only the display order is derived.
+get customerKeywordListsDisplay() {
+  return [...(this.keywordLists.customer || [])].sort((a, b) => {
+    const aEmpty = !(a.keywords || []).length && !String(a.tempKeyword || '').trim();
+    const bEmpty = !(b.keywords || []).length && !String(b.tempKeyword || '').trim();
+    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
+    return Number(b.id || 0) - Number(a.id || 0);
+  });
+},
+
+get adminKeywordListsDisplay() {
+  return [...(this.keywordLists.admin || [])].sort((a, b) => {
+    const aEmpty = !(a.keywords || []).length && !String(a.tempKeyword || '').trim();
+    const bEmpty = !(b.keywords || []).length && !String(b.tempKeyword || '').trim();
+    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
+    return Number(b.id || 0) - Number(a.id || 0);
+  });
+},
+
+// =========================================================
+// TAB 4 : KEYWORD DASHBOARD LOGIC
+// =========================================================
+
+
+// จำนวนแชททั้งหมดหลังจากใช้ Filter ด้านบน
+get keywordTotalChats() {
+  return this.filteredData.length;
+},
+
+
+// =========================================================
+// เพิ่ม Keyword List ใหม่
+// =========================================================
+addKeywordList(side) {
+
+  this.keywordListCounter++;
+
+  const list = {
+    id: this.keywordListCounter,
+    side: side,
+    mode: 'OR',
+    keywords: [],
+    tempKeyword: ''
+  };
+
+  // New/empty input boxes should always start at the top of Page 4.
+  this.keywordLists[side].unshift(list);
+
+  this.activeKeywordListId = list.id;
+  this.activeKeywordSide = side;
+
+  // Page 4 data is the source for Report sections 8–9.
+  // Redraw immediately so Report reflects the new list.
+  this.scheduleReportCharts();
+  if (this.currentTab === 'report') {
+    this.$nextTick(() => this.renderReportKeywordChartsFresh());
+  }
+},
+
+
+// =========================================================
+// ลบ Keyword List
+// =========================================================
+removeKeywordList(side, id) {
+
+  this.keywordLists[side] =
+    this.keywordLists[side].filter(
+      list => list.id !== id
+    );
+
+  if (this.activeKeywordListId === id) {
+    this.activeKeywordListId = null;
+  }
+
+  // Keep Report sections 8–9 synchronized with Page 4.
+  this.scheduleReportCharts();
+  if (this.currentTab === 'report') {
+    this.$nextTick(() => this.renderReportKeywordChartsFresh());
+  }
+},
+
+
+// =========================================================
+// เพิ่ม Keyword เข้า List
+// =========================================================
+addKeywordToList(list) {
+
+  const keyword =
+    String(list.tempKeyword || '').trim();
+
+  if (!keyword) return;
+
+  // ป้องกัน Keyword ซ้ำใน List เดียวกัน
+  if (!list.keywords.includes(keyword)) {
+    list.keywords.push(keyword);
+  }
+
+  list.tempKeyword = '';
+
+  this.activeKeywordListId = list.id;
+  this.activeKeywordSide = list.side;
+
+  // The Report must immediately pick up the newly added keyword.
+  this.scheduleReportCharts();
+  if (this.currentTab === 'report') {
+    this.$nextTick(() => this.renderReportKeywordChartsFresh());
+  }
+},
+
+// Remove a keyword from Page 4 and refresh Report sections 8–9.
+removeKeywordFromList(list, index) {
+  if (!list || !Array.isArray(list.keywords)) return;
+  list.keywords.splice(index, 1);
+  this.scheduleReportCharts();
+  if (this.currentTab === 'report') {
+    this.$nextTick(() => this.renderReportKeywordChartsFresh());
+  }
+},
+
+// =========================================================
+// นับจำนวนแชท Keyword List
+// รองรับการพิมพ์ Keyword แบบ Realtime
+// =========================================================
+// =========================================================
+// TAB 4 : นับจำนวนแชท Keyword แบบ REALTIME
+// รวม Keyword ที่กำลังพิมพ์อยู่ด้วย
+// =========================================================
+keywordListCount(list) {
+
+  if (!list) return 0;
+
+  const sourceField =
+    list.side === 'customer'
+      ? 'search_Customer'
+      : 'search_Admin';
+
+  // Keyword ที่กด + แล้ว
+  let keywords = [
+    ...(list.keywords || [])
+  ];
+
+  // Keyword ที่กำลังพิมพ์อยู่
+  const typing =
+    String(list.tempKeyword || '').trim();
+
+  if (typing) {
+    keywords.push(typing);
+  }
+
+  if (keywords.length === 0) {
+    return 0;
+  }
+
+  keywords = keywords
+    .map(kw => String(kw).trim().toLowerCase())
+    .filter(Boolean);
+
+  return this.filteredData.filter(item => {
+
+    const text =
+      String(item[sourceField] || '').toLowerCase();
+
+    // AND = ต้องพบทุกคำ
+    if (list.mode === 'AND') {
+
+      return keywords.every(
+        kw => text.includes(kw)
+      );
+
+    }
+
+    // OR = พบคำใดคำหนึ่ง
+    return keywords.some(
+      kw => text.includes(kw)
+    );
+
+  }).length;
+},
+
+
+// =========================================================
+// คำนวณเปอร์เซ็นต์ของ Keyword List
+// =========================================================
+keywordListPercent(list) {
+
+  const total = this.keywordTotalChats;
+
+  if (!total) {
+    return '0.0';
+  }
+
+  const count =
+    this.keywordListCount(list);
+
+  return ((count / total) * 100).toFixed(1);
+},
+
+
+// =========================================================
+// หา Keyword List ที่กำลังถูกเลือก
+// =========================================================
+get activeKeywordList() {
+
+  const allLists = [
+    ...this.keywordLists.customer,
+    ...this.keywordLists.admin
+  ];
+
+  return allLists.find(
+    list => list.id === this.activeKeywordListId
+  ) || null;
+},
+
+
+// =========================================================
+// TAB 4 : KEYWORD SEARCH RESULT
+// ค้นหาคำที่เกี่ยวข้องกับ Keyword ที่กำลังพิมพ์
+// =========================================================
+get keywordSearchResults() {
+
+  const allLists = [
+    ...this.keywordLists.customer,
+    ...this.keywordLists.admin
+  ];
+
+  const activeList =
+    allLists.find(
+      list => list.id === this.activeKeywordListId
+    );
+
+  if (!activeList) {
+    return [];
+  }
+
+  const query =
+    String(activeList.tempKeyword || '')
+      .trim()
+      .toLowerCase();
+
+  if (!query) {
+    return [];
+  }
+
+  const sourceField =
+    activeList.side === 'customer'
+      ? 'search_Customer'
+      : 'search_Admin';
+
+  const counts = {};
+
+  this.filteredData.forEach(item => {
+
+    const text =
+      String(item[sourceField] || '').trim();
+
+    if (!text) return;
+
+
+    let words = [];
+
+    try {
+
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
+
+        const segmenter =
+          new Intl.Segmenter('th', {
+            granularity: 'word'
+          });
+
+        words =
+          [...segmenter.segment(text)]
+            .filter(x => x.isWordLike)
+            .map(x => x.segment.trim())
+            .filter(x => x.length >= 2);
+
+      } else {
+
+        words =
+          text
+            .replace(
+              /[\[\]\(\)\{\}"'“”‘’.,!?;:|/\\\-_=+*#@]/g,
+              ' '
+            )
+            .split(/\s+/)
+            .map(x => x.trim())
+            .filter(x => x.length >= 2);
+      }
+
+    } catch (e) {
+
+      words =
+        text
+          .replace(
+            /[\[\]\(\)\{\}"'“”‘’.,!?;:|/\\\-_=+*#@]/g,
+            ' '
+          )
+          .split(/\s+/)
+          .map(x => x.trim())
+          .filter(x => x.length >= 2);
+    }
+
+    const roomWords = new Set();
+
+    words.forEach(word => {
+
+      const cleanWord =
+        word.toLowerCase();
+
+      if (
+        cleanWord.includes(query) ||
+        query.includes(cleanWord)
+      ) {
+
+        roomWords.add(cleanWord);
+
+      }
+
+    });
+
+    roomWords.forEach(word => {
+
+      if (!counts[word]) {
+        counts[word] = 0;
+      }
+
+      counts[word]++;
+
+    });
+
+  });
+
+  const total =
+    this.keywordTotalChats;
+
+  return Object.keys(counts)
+
+    .map(keyword => {
+
+      const count =
+        counts[keyword];
+
+      return {
+        keyword: keyword,
+        count: count,
+        percent:
+          total > 0
+            ? ((count / total) * 100).toFixed(1)
+            : '0.0'
+      };
+
+    })
+
+    .sort(
+      (a, b) => b.count - a.count
+    )
+
+    .slice(0, 50);
+
+},
+        loading: true,
+        rawData: [],
+        selectedYears: [],
+        selectedMonths: [],
+        selectedDates: [],
+        selectedCategory: '',
+        selectedProcess: '',
+        selectedChatProcess: '',
+        selectedCustomerProcess: '',
+        selectedStatusFilter: '',
+        selectedChannelFilter: '',
+        customerNameSearch: '',
+
+        // Report filters are reactive arrays so multiple boxes can be selected.
+        reportSelectedChannel: [],
+        reportSelectedStatus: [],
+        reportSelectedProcess: [],
+        reportCharts: {},
+        reportChartRenderTimer: null,
+
+        tempCustKeyword: '',
+        customerKeywords: [],
+        customerMatchMode: 'OR',
+
+        tempAdminKeyword: '',
+        adminKeywords: [],
+        adminMatchMode: 'OR',
+        
+
+
+
+
+
+        activeChat: null,
+        openYear: false,
+        openMonth: false,
+        openDate: false,
+
+        
+init() {
+
+  google.script.run
+    .withSuccessHandler(data => {
+
+      this.rawData = data;
+      this.loading = false;
+
+      this.$nextTick(() => {
+        this.scheduleReportCharts();
+      });
+
+    })
+    .getSheetData();
+
+
+  // Global Filter
+  this.$watch(
+    'selectedYears',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'selectedMonths',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'selectedDates',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'selectedChannelFilter',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'customerKeywords',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'adminKeywords',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'tempCustKeyword',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'tempAdminKeyword',
+    () => this.scheduleReportCharts()
+  );
+
+  // Page 4 Keyword Lists are the source of Report sections 8–9.
+  // Watch the whole object so adding/removing/editing keywords redraws the charts.
+  this.$watch(
+    'keywordLists',
+    () => this.scheduleReportCharts()
+  );
+
+
+  // Report Filter
+  this.$watch(
+    'reportSelectedChannel',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'reportSelectedStatus',
+    () => this.scheduleReportCharts()
+  );
+
+  this.$watch(
+    'reportSelectedProcess',
+    () => this.scheduleReportCharts()
+  );
+
+
+  // เปลี่ยน Tab
+  this.$watch(
+    'currentTab',
+    value => {
+
+      if (value === 'report') {
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.scheduleReportCharts();
+            this.renderReportKeywordChartsFresh();
+          }, 0);
+        });
+      }
+
+    }
+  );
+},
+
+        formatReadableDate(dateStr) {
+          if (!dateStr) return '-';
+          try {
+            let parts = dateStr.split('T');
+            let datePart = parts[0];
+            let timePart = parts[1] ? parts[1].split('+')[0].split('.')[0] : '';
+           
+            let dateSub = datePart.split('-');
+            if (dateSub.length === 3) {
+              let y = dateSub[0];
+              let m = dateSub[1];
+              let d = dateSub[2];
+              return `${d}-${m}-${y}${timePart ? ' ' + timePart : ''}`;
+            }
+            return dateStr;
+          } catch(e) {
+            return dateStr;
+          }
+        },
+
+
+        formatDateOnly(dateStr) {
+          if (!dateStr) return '';
+          try {
+            let parts = dateStr.split('-');
+            if (parts.length === 3) {
+              return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            return dateStr;
+          } catch(e) {
+            return dateStr;
+          }
+        },
+
+        getCustomerStatus(firstStr, latestStr) {
+          if (!firstStr || !latestStr) return { type:'New', text:'New (0 วัน)', days:0 };
+          try {
+            const d1=new Date(firstStr), d2=new Date(latestStr);
+            if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return {type:'New',text:'New',days:0};
+            const days=Math.max(0,Math.floor(Math.abs(d2-d1)/86400000));
+            const type=days>=365?'Old':(days>=30?'Lead':'New');
+            if(type==='New') return {type,text:`New (${days} วัน)`,days};
+            if(type==='Lead'){const months=Math.floor(days/30), rem=days%30; return {type,text:`Lead (${months} เดือน${rem?` ${rem} วัน`:''})`,days};}
+            const years=Math.floor(days/365), remDays=days-years*365, months=Math.floor(remDays/30);
+            return {type,text:`Old (${years} ปี${months?` ${months} เดือน`:''})`,days};
+          } catch(e){ return {type:'New',text:'New',days:0}; }
+        },
+
+        goToChat(chat) {
+          this.currentTab = 'chat';
+          this.selectedChatProcess = chat.ai_Process || '';
+          this.activeChat = chat;
+        },
+
+        addCustomerKeyword() {
+          let val = this.tempCustKeyword.trim();
+          if (val && !this.customerKeywords.includes(val)) {
+            this.customerKeywords.push(val);
+          }
+          this.tempCustKeyword = '';
+        },
+
+
+        addAdminKeyword() {
+          let val = this.tempAdminKeyword.trim();
+          if (val && !this.adminKeywords.includes(val)) {
+            this.adminKeywords.push(val);
+          }
+          this.tempAdminKeyword = '';
+          this.reportSelectedChannel = [];
+          this.reportSelectedStatus = [];
+          this.reportSelectedProcess = [];
+          this.scheduleReportCharts();
+        },
+
+        resetFilter() {
+          this.selectedYears = [];
+          this.selectedMonths = [];
+          this.selectedDates = [];
+          this.selectedCategory = '';
+          this.selectedProcess = '';
+          this.selectedChatProcess = '';
+          this.selectedCustomerProcess = '';
+          this.selectedStatusFilter = '';
+          this.selectedChannelFilter = '';
+          this.customerKeywords = [];
+          this.adminKeywords = [];
+          this.tempCustKeyword = '';
+          this.tempAdminKeyword = '';
+
+          this.reportSelectedChannel = [];
+          this.reportSelectedStatus = [];
+          this.reportSelectedProcess = [];
+        },
+
+
+        get uniqueYears() {
+          return [...new Set(this.rawData.map(item => String(item.Year || '').trim()))].filter(Boolean).sort();
+        },
+
+        get uniqueMonths() {
+          return [...new Set(this.rawData.map(item => String(item.Monyh || '').trim()))].filter(Boolean).sort((a,b) => Number(a)-Number(b));
+        },
+
+
+        get uniqueDates() {
+          return [...new Set(this.rawData.map(item => String(item.DATE || '').trim()))].filter(Boolean).sort((a,b) => Number(a)-Number(b));
+        },
+
+
+        get filteredData() {
+        return this.rawData.filter(item => {
+        let itemYear = String(item.Year || '').trim();
+        let itemMonth = String(item.Monyh || '').trim();
+        let itemDate = String(item.DATE || '').trim();
+
+
+        let matchYear = this.selectedYears.length === 0 || this.selectedYears.includes(itemYear);
+        let matchMonth = this.selectedMonths.length === 0 || this.selectedMonths.includes(itemMonth);
+        let matchDate = this.selectedDates.length === 0 || this.selectedDates.includes(itemDate);
+
+        if (!matchYear || !matchMonth || !matchDate) return false;
+
+
+        // 📌 แก้ไขช่วงเช็คตัวกรองช่องทางตรงนี้
+        if (this.selectedChannelFilter) {
+            let ch = String(item.channel_type || '').trim();
+            if (ch === 'LinkQR' || ch === 'Link / QR') ch = 'Link/QR';
+            if (ch !== this.selectedChannelFilter) return false;
+        }
+
+
+        // ... โค้ดค้นหาคำค้น (Keyword) ด้านล่างต่อตามปกติ ...
+
+
+            // 🔍 ดึงข้อมูลดิบเฉพาะคอลัมน์ Q (search_Customer) และ R (search_Admin)
+            let lowerCustMsgs = String(item.search_Customer || '').toLowerCase();
+            let lowerAdminMsgs = String(item.search_Admin || '').toLowerCase();
+
+
+            // 1️⃣ กล่องที่ 1: เช็คเฉพาะคอลัมน์ Q เท่านั้น
+            let matchCust = true;
+            let activeCustKws = [...this.customerKeywords];
+            let currentCustTyping = this.tempCustKeyword.trim().toLowerCase();
+            if (currentCustTyping) {
+            activeCustKws.push(currentCustTyping);
+            }
+            if (activeCustKws.length > 0) {
+            if (this.customerMatchMode === 'OR') {
+            matchCust = activeCustKws.some(kw => lowerCustMsgs.includes(kw.toLowerCase()));
+            } else {
+            matchCust = activeCustKws.every(kw => lowerCustMsgs.includes(kw.toLowerCase()));
+            }
+           }
+
+            // 2️⃣ กล่องที่ 2: เช็คเฉพาะคอลัมน์ R เท่านั้น
+            let matchAdmin = true;
+            let activeAdminKws = [...this.adminKeywords];
+            let currentAdminTyping = this.tempAdminKeyword.trim().toLowerCase();
+            if (currentAdminTyping) {
+            activeAdminKws.push(currentAdminTyping);
+            }
+            if (activeAdminKws.length > 0) {
+            if (this.adminMatchMode === 'OR') {
+             matchAdmin = activeAdminKws.some(kw => lowerAdminMsgs.includes(kw.toLowerCase()));
+             } else {
+              matchAdmin = activeAdminKws.every(kw => lowerAdminMsgs.includes(kw.toLowerCase()));
+            }
+            }
+
+            return matchCust && matchAdmin;
+          });
+        },
+
+        get processFilteredData() {
+          if (!this.selectedProcess) return this.filteredData;
+          return this.filteredData.filter(item => (item.ai_Process || 'ไม่ระบุสถานะ') === this.selectedProcess);
+        },
+
+
+        get sortedFilteredData() {
+          return [...this.filteredData];
+        },
+
+
+        get chatsByProcessFilter() {
+          if (!this.selectedChatProcess) return this.sortedFilteredData;
+          return this.sortedFilteredData.filter(item => (item.ai_Process || 'ไม่ระบุสถานะ') === this.selectedChatProcess);
+        },
+
+
+get customerTableBaseData() {
+  // ฐานเดียวกับตารางลูกค้า: วันที่/เดือน/ปี + Keyword + ชื่อลูกค้า
+  let list = this.rawData.filter(item => {
+    const itemYear = String(item.Year || '').trim();
+    const itemMonth = String(item.Monyh || '').trim();
+    const itemDate = String(item.DATE || '').trim();
+    return (this.selectedYears.length === 0 || this.selectedYears.includes(itemYear)) &&
+           (this.selectedMonths.length === 0 || this.selectedMonths.includes(itemMonth)) &&
+           (this.selectedDates.length === 0 || this.selectedDates.includes(itemDate));
+  });
+
+  const custKws = [...this.customerKeywords];
+  const custTyping = String(this.tempCustKeyword || '').trim();
+  if (custTyping) custKws.push(custTyping);
+  const adminKws = [...this.adminKeywords];
+  const adminTyping = String(this.tempAdminKeyword || '').trim();
+  if (adminTyping) adminKws.push(adminTyping);
+
+  if (custKws.length) {
+    list = list.filter(item => {
+      const text = String(item.search_Customer || '').toLowerCase();
+      return this.customerMatchMode === 'OR'
+        ? custKws.some(k => text.includes(String(k).toLowerCase()))
+        : custKws.every(k => text.includes(String(k).toLowerCase()));
+    });
+  }
+  if (adminKws.length) {
+    list = list.filter(item => {
+      const text = String(item.search_Admin || '').toLowerCase();
+      return this.adminMatchMode === 'OR'
+        ? adminKws.some(k => text.includes(String(k).toLowerCase()))
+        : adminKws.every(k => text.includes(String(k).toLowerCase()));
+    });
+  }
+
+  if (this.customerNameSearch && this.customerNameSearch.trim()) {
+    const q = this.customerNameSearch.trim().toLowerCase();
+    list = list.filter(item => String(item.customer_name || '').toLowerCase().startsWith(q));
+  }
+  return list;
+},
+
+get customersByProcessFilter() {
+  let list = [...this.customerTableBaseData];
+  if (this.selectedChannelFilter) {
+    list = list.filter(item => {
+      let ch = String(item.channel_type || '').trim();
+      if (ch === 'LinkQR' || ch === 'Link / QR') ch = 'Link/QR';
+      return ch === this.selectedChannelFilter;
+    });
+  }
+  if (this.selectedCustomerProcess) {
+    list = list.filter(item => (item.ai_Process || 'ไม่ระบุสถานะ') === this.selectedCustomerProcess);
+  }
+  if (this.selectedStatusFilter) {
+    list = list.filter(item => this.getCustomerStatus(item.first_message_time, item.latest_message_time).type === this.selectedStatusFilter);
+  }
+  return list;
+},
+
+// Export ต้องใช้ข้อมูลชุดเดียวกับตาราง และใช้ชื่อ field จริงจาก Apps Script
+exportCustomerDataToExcel() {
+  const data = this.customersByProcessFilter;
+  if (!data || data.length === 0) {
+    alert('ไม่มีข้อมูลสำหรับ Export ครับ');
+    return;
+  }
+
+  const csvCell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  let csvContent = '\uFEFF';
+
+  // Keep Status separate from Year / Month / Date.
+  // Use the actual data fields when available, with date parsing as fallback.
+  csvContent += [
+    'Customer ID',
+    'Name',
+    'Status',
+    'Year',
+    'Month',
+    'Date',
+    'First Message',
+    'Latest Message',
+    'Channel',
+    'message_text_Customer',
+    'ai_Customer',
+    'ai_Admin',
+    'ai_Process'
+  ].map(csvCell).join(',') + '\n';
+
+  const extractDateParts = (item) => {
+    const raw = String(item.first_message_time || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    return {
+      year: String(item.Year || '').trim() || (match ? match[1] : ''),
+      month: String(item.Monyh || '').trim() || (match ? String(Number(match[2])) : ''),
+      date: String(item.DATE || '').trim() || (match ? String(Number(match[3])) : '')
+    };
+  };
+
+  data.forEach(item => {
+    const statusObj = this.getCustomerStatus(item.first_message_time, item.latest_message_time);
+    let channel = String(item.channel_type || '').trim();
+    if (channel === 'LinkQR' || channel === 'Link / QR') channel = 'Link/QR';
+
+    const parts = extractDateParts(item);
+
+    // Support both possible backend field names.
+    // If message_text_Customer exists, use it; otherwise fall back to message_text.
+    const customerMessage =
+      item.message_text_Customer ??
+      item.message_text_customer ??
+      item.messageText_Customer ??
+      item.message_text ??
+      '';
+
+    const aiCustomer = item.ai_Customer ?? item.ai_Cutomer ?? '';
+    const aiAdmin = item.ai_Admin ?? '';
+    const aiProcess = item.ai_Process || 'ไม่ระบุสถานะ';
+
+    csvContent += [
+      item.conversation_id,
+      item.customer_name,
+      statusObj.type,
+      parts.year,
+      parts.month,
+      parts.date,
+      item.first_message_time,
+      item.latest_message_time,
+      channel,
+      customerMessage,
+      aiCustomer,
+      aiAdmin,
+      aiProcess
+    ].map(csvCell).join(',') + '\n';
+  });
+
+  const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `customer_data_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+},
+
+        get statusCounts() {
+          // นับ Status โดยตัด Status Filter ตัวเองออก แต่ยังคง Channel + Process ที่เลือกอยู่
+          let baseList = [...this.customerTableBaseData];
+          if (this.selectedChannelFilter) {
+            baseList = baseList.filter(item => {
+              let ch = String(item.channel_type || '').trim();
+              if (ch === 'LinkQR' || ch === 'Link / QR') ch = 'Link/QR';
+              return ch === this.selectedChannelFilter;
+            });
+          }
+          if (this.selectedCustomerProcess) {
+            baseList = baseList.filter(item => (item.ai_Process || 'ไม่ระบุสถานะ') === this.selectedCustomerProcess);
+          }
+          const counts = {New:0, Lead:0, Old:0};
+          baseList.forEach(item => {
+            const type = this.getCustomerStatus(item.first_message_time, item.latest_message_time).type;
+            if (counts[type] !== undefined) counts[type]++;
+          });
+          return counts;
+        },
+
+        get channelCounts() {
+          // นับ Channel โดยตัด Channel Filter ตัวเองออก แต่ยังคง Status + Process ที่เลือกอยู่
+          let baseList = [...this.customerTableBaseData];
+          if (this.selectedStatusFilter) {
+            baseList = baseList.filter(item => this.getCustomerStatus(item.first_message_time, item.latest_message_time).type === this.selectedStatusFilter);
+          }
+          if (this.selectedCustomerProcess) {
+            baseList = baseList.filter(item => (item.ai_Process || 'ไม่ระบุสถานะ') === this.selectedCustomerProcess);
+          }
+          const counts = {Ads:0, Organic:0, 'Link/QR':0, 'Out of Data Center':0};
+          baseList.forEach(item => {
+            let ch = String(item.channel_type || '').trim();
+            if (ch === 'LinkQR' || ch === 'Link / QR') ch = 'Link/QR';
+            if (counts[ch] !== undefined) counts[ch]++;
+          });
+          return counts;
+        },
+
+        get processCounts() {
+          // นับ Process โดยตัด Process Filter ตัวเองออก แต่ยังคง Status + Channel ที่เลือกอยู่
+          let baseList = [...this.customerTableBaseData];
+          if (this.selectedStatusFilter) {
+            baseList = baseList.filter(item => this.getCustomerStatus(item.first_message_time, item.latest_message_time).type === this.selectedStatusFilter);
+          }
+          if (this.selectedChannelFilter) {
+            baseList = baseList.filter(item => {
+              let ch = String(item.channel_type || '').trim();
+              if (ch === 'LinkQR' || ch === 'Link / QR') ch = 'Link/QR';
+              return ch === this.selectedChannelFilter;
+            });
+          }
+          const counts = {};
+          baseList.forEach(item => {
+            const name = item.ai_Process || 'ไม่ระบุสถานะ';
+            counts[name] = (counts[name] || 0) + 1;
+          });
+          return counts;
+        },
+
+        parseChatMessages(rawText) {
+          if (!rawText) return [];
+          let lines = rawText.split('\n');
+          let parsed = [];
+          let lastDate = null;
+
+          lines.forEach(line => {
+            let match = line.match(/^\[(.*?)\]\s*\[(Admin|Customer)\]:\s*(.*)$/i);
+            if (match) {
+              let dateTimeStr = match.shift();
+              let fullDateTime = match[0].trim();
+              let sender = match[1].trim();
+              let text = match[2].trim();
+
+              let parts = fullDateTime.split(' ');
+              let datePart = parts[0] || '';
+              let timePart = parts[1] || '';
+
+
+              let showDate = null;
+              if (datePart && datePart !== lastDate) {
+                showDate = datePart;
+                lastDate = datePart;
+              }
+
+              parsed.push({
+                date: showDate,
+                time: timePart,
+                sender: sender,
+                text: text
+              });
+            } else if (line.trim() !== '' && parsed.length > 0) {
+              parsed[parsed.length - 1].text += '\n' + line;
+            }
+          });
+          return parsed;
+        },
+// =========================================================
+// TAB 5 : REPORT DATA
+// =========================================================
+
+// ---------------------------------------------------------
+// ข้อมูลหลัง Report Filter
+// Global Filter จะถูกใช้ผ่าน filteredData อยู่แล้ว
+// แล้วจึงใช้ Channel + Status + Process ของ Report ซ้อนอีกชั้น
+// ---------------------------------------------------------
+get reportFilteredData() {
+  let list=[...this.filteredData];
+  if(this.reportSelectedChannel.length) list=list.filter(item=>{let ch=String(item.channel_type||'').trim();if(ch==='LinkQR'||ch==='Link / QR')ch='Link/QR';return this.reportSelectedChannel.includes(ch);});
+  if(this.reportSelectedStatus.length) list=list.filter(item=>this.reportSelectedStatus.includes(this.getCustomerStatus(item.first_message_time,item.latest_message_time).type));
+  if(this.reportSelectedProcess.length) list=list.filter(item=>this.reportSelectedProcess.includes(item.ai_Process||'ไม่ระบุสถานะ'));
+  return list;
+},
+
+// ---------------------------------------------------------
+// Percent
+// ---------------------------------------------------------
+reportPercent(count, total) {
+
+  if (!total) return '0.0';
+
+  return ((count / total) * 100).toFixed(1);
+},
+
+
+// ---------------------------------------------------------
+// 1. CHANNEL
+// ---------------------------------------------------------
+get reportFilterBaseData() {
+  return [...this.filteredData];
+},
+
+get reportChannelStats() {
+  // Channel cards are calculated after Status + Process filters,
+  // but NEVER after Channel itself. This keeps every selected/unselected
+  // Channel box in the same position and always clickable.
+  let list=[...this.filteredData];
+  if(this.reportSelectedStatus.length) list=list.filter(item=>this.reportSelectedStatus.includes(this.getCustomerStatus(item.first_message_time,item.latest_message_time).type));
+  if(this.reportSelectedProcess.length) list=list.filter(item=>this.reportSelectedProcess.includes(item.ai_Process||'ไม่ระบุสถานะ'));
+  const total=list.length;
+  const counts={Ads:0,Organic:0,'Link/QR':0,'Out of Data Center':0};
+  list.forEach(item=>{
+    let ch=String(item.channel_type||'').trim();
+    if(ch==='LinkQR'||ch==='Link / QR') ch='Link/QR';
+    if(counts[ch]!==undefined) counts[ch]++;
+  });
+  return Object.keys(counts).map(name=>({
+    name,count:counts[name],percent:this.reportPercent(counts[name],total),
+    color:({Ads:'#3498db',Organic:'#2ecc71','Link/QR':'#f39c12','Out of Data Center':'#f5c542'}[name]||'#64748b')
+  }));
+},
+
+get reportStatusStats() {
+  // Status cards are calculated after Channel + Process filters,
+  // but NEVER after Status itself.
+  let list=[...this.filteredData];
+  if(this.reportSelectedChannel.length) list=list.filter(item=>{
+    let ch=String(item.channel_type||'').trim();
+    if(ch==='LinkQR'||ch==='Link / QR') ch='Link/QR';
+    return this.reportSelectedChannel.includes(ch);
+  });
+  if(this.reportSelectedProcess.length) list=list.filter(item=>this.reportSelectedProcess.includes(item.ai_Process||'ไม่ระบุสถานะ'));
+  const total=list.length;
+  const counts={New:0,Lead:0,Old:0};
+  list.forEach(item=>{const type=this.getCustomerStatus(item.first_message_time,item.latest_message_time).type;if(counts[type]!==undefined) counts[type]++;});
+  return Object.keys(counts).map(name=>({
+    name,count:counts[name],percent:this.reportPercent(counts[name],total),
+    color:({New:'#2ecc71',Lead:'#f39c12',Old:'#94a3b8'}[name]||'#64748b')
+  }));
+},
+
+// ---------------------------------------------------------
+// 2. STATUS FREQUENCY
+// แจกแจงระยะเวลาแชท
+// ---------------------------------------------------------
+get reportStatusFrequencyData() {
+  const result={Overall:[],New:[],Lead:[],Old:[]};
+  const buckets=['0 วัน','1 วัน','2-3 วัน','4-7 วัน','8-14 วัน','15-29 วัน','1 เดือน','2 เดือน','3 เดือน','4-5 เดือน','6-8 เดือน','9-11 เดือน','1 ปี','มากกว่า 1 ปี'];
+  const makeBucket=days=>{
+    if(days<=0) return '0 วัน';
+    if(days===1) return '1 วัน';
+    if(days<=3) return '2-3 วัน';
+    if(days<=7) return '4-7 วัน';
+    if(days<=14) return '8-14 วัน';
+    if(days<=29) return '15-29 วัน';
+    const status=this.getCustomerStatusFromDays(days);
+    if(status.type==='Lead'){
+      const m=status.months;
+      if(m===1) return '1 เดือน';
+      if(m===2) return '2 เดือน';
+      if(m===3) return '3 เดือน';
+      if(m<=5) return '4-5 เดือน';
+      if(m<=8) return '6-8 เดือน';
+      return '9-11 เดือน';
+    }
+    if(status.type==='Old' && status.years===1) return '1 ปี';
+    return 'มากกว่า 1 ปี';
+  };
+  buckets.forEach(b=>['Overall','New','Lead','Old'].forEach(k=>result[k].push({bucket:b,count:0})));
+  this.reportFilteredData.forEach(item=>{
+    // Use the exact same status calculation as the customer table.
+    const statusObj=this.getCustomerStatus(item.first_message_time,item.latest_message_time);
+    const days=Number(statusObj.days)||0;
+    const bucket=makeBucket(days);
+    const status=statusObj.type;
+    const a=result.Overall.find(x=>x.bucket===bucket); if(a)a.count++;
+    const b=result[status]?.find(x=>x.bucket===bucket); if(b)b.count++;
+  });
+  return result;
+},
+
+getCustomerStatusFromDays(days){
+  days=Math.max(0,Number(days)||0);
+  if(days<30) return {type:'New',months:0,years:0};
+  if(days<365) return {type:'Lead',months:Math.floor(days/30),years:0};
+  return {type:'Old',months:0,years:Math.floor(days/365)};
+},
+
+// ---------------------------------------------------------
+// 3. PROCESS
+// ---------------------------------------------------------
+get reportProcessStats() {
+  // Process cards are calculated after Channel + Status filters,
+  // but NEVER after Process itself. This keeps selected Process boxes
+  // visible and in a stable order while filtering.
+  let list=[...this.filteredData];
+  if(this.reportSelectedChannel.length) list=list.filter(item=>{
+    let ch=String(item.channel_type||'').trim();
+    if(ch==='LinkQR'||ch==='Link / QR') ch='Link/QR';
+    return this.reportSelectedChannel.includes(ch);
+  });
+  if(this.reportSelectedStatus.length) list=list.filter(item=>this.reportSelectedStatus.includes(this.getCustomerStatus(item.first_message_time,item.latest_message_time).type));
+
+  const total=list.length, counts={};
+  list.forEach(item=>{
+    const proc=String(item.ai_Process||'ไม่ระบุสถานะ').trim() || 'ไม่ระบุสถานะ';
+    counts[proc]=(counts[proc]||0)+1;
+  });
+
+  const colorFor=name=>{
+    let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))%360;
+    return `hsl(${h} 70% 55%)`;
+  };
+  return Object.keys(counts).sort((a,b)=>a.localeCompare(b,'th')).map(name=>({
+    name,count:counts[name],percent:this.reportPercent(counts[name],total),color:colorFor(name)
+  }));
+},
+
+// ---------------------------------------------------------
+// 6. AI CUSTOMER
+// ---------------------------------------------------------
+get reportCustomerStats() {
+
+  const total = this.reportFilteredData.length;
+
+  const counts = {};
+
+  this.reportFilteredData.forEach(item => {
+
+    const value =
+      item.ai_Customer || 'ไม่ระบุหมวดหมู่';
+
+    counts[value] =
+      (counts[value] || 0) + 1;
+  });
+
+  return Object.keys(counts)
+    .map(name => ({
+      name: name,
+      count: counts[name],
+      percent: this.reportPercent(
+        counts[name],
+        total
+      )
+    }))
+    .sort((a, b) => b.count - a.count);
+},
+
+
+// ---------------------------------------------------------
+// 7. AI ADMIN
+// ---------------------------------------------------------
+get reportAdminStats() {
+
+  const total = this.reportFilteredData.length;
+
+  const counts = {};
+
+  this.reportFilteredData.forEach(item => {
+
+    const value =
+      item.ai_Admin || 'ไม่มีการตอบกลับ';
+
+    counts[value] =
+      (counts[value] || 0) + 1;
+  });
+
+  return Object.keys(counts)
+    .map(name => ({
+      name: name,
+      count: counts[name],
+      percent: this.reportPercent(
+        counts[name],
+        total
+      )
+    }))
+    .sort((a, b) => b.count - a.count);
+},
+
+
+// ---------------------------------------------------------
+// KEYWORD TOKENIZER
+// 1 ห้อง = นับ Keyword 1 ครั้ง
+// ---------------------------------------------------------
+reportTokenize(text) {
+
+  text = String(text || '').trim();
+
+  if (!text) return [];
+
+  let words = [];
+
+  try {
+
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
+
+      const segmenter =
+        new Intl.Segmenter('th', {
+          granularity: 'word'
+        });
+
+      words =
+        [...segmenter.segment(text)]
+          .filter(x => x.isWordLike)
+          .map(x => x.segment.trim())
+          .filter(x => x.length >= 2);
+
+    } else {
+
+      words =
+        text
+          .replace(
+            /[\[\]\(\)\{\}"'“”‘’.,!?;:|/\\\-_=+*#@]/g,
+            ' '
+          )
+          .split(/\s+/)
+          .map(x => x.trim())
+          .filter(x => x.length >= 2);
+    }
+
+  } catch (e) {
+
+    words =
+      text
+        .replace(
+          /[\[\]\(\)\{\}"'“”‘’.,!?;:|/\\\-_=+*#@]/g,
+          ' '
+        )
+        .split(/\s+/)
+        .map(x => x.trim())
+        .filter(x => x.length >= 2);
+  }
+
+  return words.map(x => x.toLowerCase());
+},
+
+
+// ---------------------------------------------------------
+// 8. CUSTOMER KEYWORDS
+// ---------------------------------------------------------
+get reportCustomerKeywordStats() { return this.getReportPage4KeywordStats('customer'); },
+get reportAdminKeywordStats() { return this.getReportPage4KeywordStats('admin'); },
+getReportPage4KeywordStats(side) {
+  // =========================================================
+  // IMPORTANT: Page 5 must represent EACH Page-4 BOX as ONE
+  // keyword group.  Keywords inside the same box stay linked by
+  // that box's OR / AND mode and must NOT be split into separate bars.
+  // =========================================================
+
+  const lists = Array.isArray(this.keywordLists?.[side])
+    ? [...this.keywordLists[side]]
+    : [];
+
+  const field = side === 'customer' ? 'search_Customer' : 'search_Admin';
+  const source = this.reportFilteredData;
+  const total = source.length;
+
+  const normalizeKeywords = list => {
+    const values = [
+      ...(Array.isArray(list?.keywords) ? list.keywords : []),
+      String(list?.tempKeyword || '').trim()
+    ];
+
+    const seen = new Set();
+    return values
+      .map(v => String(v || '').trim())
+      .filter(Boolean)
+      .filter(v => {
+        const key = v.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  const groupedStats = lists
+    .map(list => {
+      const keywords = normalizeKeywords(list);
+      if (!keywords.length) return null;
+
+      const mode = String(list.mode || 'OR').toUpperCase() === 'AND'
+        ? 'AND'
+        : 'OR';
+
+      const normalized = keywords.map(k => k.toLowerCase());
+
+      // EXACTLY the same matching rule as Page 4 keywordListCount():
+      // OR  = at least one keyword in the same box
+      // AND = every keyword in the same box
+      const count = source.filter(item => {
+        const text = String(item[field] || '').toLowerCase();
+
+        return mode === 'AND'
+          ? normalized.every(kw => text.includes(kw))
+          : normalized.some(kw => text.includes(kw));
+      }).length;
+
+      return {
+        // Keep the box identity visible in the Report so each bar can
+        // be traced directly back to its Page-4 Keyword List.
+        name: `List #${list.id}: ${keywords.join(` ${mode} `)}`,
+        count,
+        percent: this.reportPercent(count, total),
+        listId: list.id,
+        mode,
+        keywords
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) =>
+      b.count - a.count || Number(a.listId || 0) - Number(b.listId || 0)
+    );
+
+  // Compatibility fallback for the older top keyword boxes on Page 1.
+  // Only use this when there are no Page-4 groups at all.
+  if (!groupedStats.length) {
+    const legacy = side === 'customer'
+      ? (this.customerKeywords || [])
+      : (this.adminKeywords || []);
+
+    const seen = new Set();
+    return legacy
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+      .filter(value => {
+        const key = value.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(name => {
+        const key = name.toLowerCase();
+        const count = source.filter(item =>
+          String(item[field] || '').toLowerCase().includes(key)
+        ).length;
+        return {
+          name,
+          count,
+          percent: this.reportPercent(count, total)
+        };
+      })
+      .sort((a, b) =>
+        b.count - a.count || a.name.localeCompare(b.name, 'th')
+      );
+  }
+
+  return groupedStats;
+},
+
+// ---------------------------------------------------------
+// 5. BY DATE
+// ---------------------------------------------------------
+get reportDateStats() {
+
+  const counts = {};
+
+  this.reportFilteredData.forEach(item => {
+
+    let date =
+      String(item.DATE || '').trim();
+
+    if (!date) {
+
+      const d =
+        new Date(item.first_message_time);
+
+      if (!isNaN(d)) {
+        date =
+          String(d.getDate()).padStart(2, '0');
+      }
+    }
+
+    if (!date) return;
+
+    counts[date] =
+      (counts[date] || 0) + 1;
+  });
+
+  return Object.keys(counts)
+    .sort((a, b) => Number(a) - Number(b))
+    .map(date => ({
+      name: date,
+      count: counts[date]
+    }));
+},
+
+
+// ---------------------------------------------------------
+// 5. BY TIME
+// ---------------------------------------------------------
+get reportTimeStats() {
+
+  const counts = {};
+
+  for (let i = 0; i < 24; i++) {
+    counts[
+      String(i).padStart(2, '0') + ':00'
+    ] = 0;
+  }
+
+  this.reportFilteredData.forEach(item => {
+
+    let time =
+      String(item.Time || '').trim();
+
+    let hour = null;
+
+    if (time) {
+
+      const match =
+        time.match(/^(\d{1,2})/);
+
+      if (match) {
+        hour =
+          Number(match[1]);
+      }
+    }
+
+    if (
+      hour === null ||
+      isNaN(hour) ||
+      hour < 0 ||
+      hour > 23
+    ) {
+
+      const d =
+        new Date(item.first_message_time);
+
+      if (!isNaN(d)) {
+        hour = d.getHours();
+      }
+    }
+
+    if (hour !== null) {
+
+      const key =
+        String(hour).padStart(2, '0') + ':00';
+
+      if (counts[key] !== undefined) {
+        counts[key]++;
+      }
+    }
+  });
+
+  return Object.keys(counts).map(time => ({
+    name: time,
+    count: counts[time]
+  }));
+},
+
+// =========================================================
+// GLOBAL CHANNEL FILTER
+// =========================================================
+toggleGlobalChannelFilter(name) {
+  const normalized = String(name || '').trim();
+  this.selectedChannelFilter = (this.selectedChannelFilter === normalized) ? '' : normalized;
+},
+
+// =========================================================
+// TAB 5 : REPORT FILTER ACTIONS
+// =========================================================
+
+toggleReportChannel(name){const i=this.reportSelectedChannel.indexOf(name);if(i>=0)this.reportSelectedChannel.splice(i,1);else this.reportSelectedChannel.push(name);this.scheduleReportCharts();},
+toggleReportStatus(name){const i=this.reportSelectedStatus.indexOf(name);if(i>=0)this.reportSelectedStatus.splice(i,1);else this.reportSelectedStatus.push(name);this.scheduleReportCharts();},
+toggleReportProcess(name){const i=this.reportSelectedProcess.indexOf(name);if(i>=0)this.reportSelectedProcess.splice(i,1);else this.reportSelectedProcess.push(name);this.scheduleReportCharts();},
+clearReportFilters(){this.reportSelectedChannel=[];this.reportSelectedStatus=[];this.reportSelectedProcess=[];this.scheduleReportCharts();},
+
+// =========================================================
+// CHART HELPER
+// =========================================================
+
+destroyReportChart(id) {
+
+  if (this.reportCharts[id]) {
+
+    this.reportCharts[id].destroy();
+
+    delete this.reportCharts[id];
+  }
+},
+
+
+createReportChart(id, config) {
+  const canvas = document.getElementById(id);
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  // Report tab uses x-show. Do not create/measure charts while hidden.
+  const parent = canvas.parentElement;
+  if (!parent || parent.offsetWidth === 0 || parent.offsetHeight === 0) {
+    setTimeout(() => {
+      if (this.currentTab === 'report') this.createReportChart(id, config);
+    }, 150);
+    return;
+  }
+
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+
+  try {
+    let chart = this.reportCharts[id] || Chart.getChart(canvas);
+
+    if (chart) {
+      // Update the existing Chart.js instance in place. This prevents
+      // graphs from disappearing when filters are clicked repeatedly.
+      chart.data = config.data;
+      chart.options = config.options || {};
+      chart.config.type = config.type;
+      if (config.plugins) chart.config.plugins = config.plugins;
+
+      if (config._reportLabelData) chart._reportLabelData = config._reportLabelData;
+      else delete chart._reportLabelData;
+      if (config._reportLabelDataSets) chart._reportLabelDataSets = config._reportLabelDataSets;
+      else delete chart._reportLabelDataSets;
+      if (config._reportPercentTotal != null) chart._reportPercentTotal = config._reportPercentTotal;
+      else delete chart._reportPercentTotal;
+
+      chart.update('none');
+    } else {
+      chart = new Chart(canvas.getContext('2d'), config);
+      this.reportCharts[id] = chart;
+
+      // IMPORTANT: Chart.js does not copy our custom _report* fields from
+      // the config object onto the chart instance.  The value-label plugin
+      // reads these fields from the chart, so they must also be attached
+      // when a NEW chart is created (not only when an existing chart updates).
+      if (config._reportLabelData) chart._reportLabelData = config._reportLabelData;
+      else delete chart._reportLabelData;
+      if (config._reportLabelDataSets) chart._reportLabelDataSets = config._reportLabelDataSets;
+      else delete chart._reportLabelDataSets;
+      if (config._reportPercentTotal != null) chart._reportPercentTotal = config._reportPercentTotal;
+      else delete chart._reportPercentTotal;
+    }
+
+    requestAnimationFrame(() => {
+      if (chart && chart.canvas && chart.canvas.isConnected && this.currentTab === 'report') {
+        chart.resize();
+      }
+    });
+  } catch (err) {
+    console.error('Report chart error:', id, err);
+  }
+},
+
+
+// =========================================================
+// RENDER ALL REPORT CHARTS
+// =========================================================
+
+renderReportValuePlugin(){
+  return {
+    id:'reportValueLabels',
+    afterDatasetsDraw: chart => {
+      const ctx = chart.ctx;
+      if (!chart.data || !chart.data.datasets) return;
+      ctx.save();
+      ctx.textBaseline = 'bottom';
+
+      if (chart.config.type === 'doughnut') {
+        const ds = chart.data.datasets[0];
+        const meta = chart.getDatasetMeta(0);
+        const vals = ds.data || [];
+        const total = vals.reduce((sum,v) => sum + (Number(v) || 0), 0);
+        if (total) {
+          meta.data.forEach((arc,i) => {
+            const value = Number(vals[i]) || 0;
+            if (!value) return;
+            const percent = ((value / total) * 100).toFixed(1) + '%';
+            const pos = typeof arc.tooltipPosition === 'function' ? arc.tooltipPosition() : {x:arc.x,y:arc.y};
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '700 11px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(percent, pos.x, pos.y);
+          });
+        }
+        ctx.restore();
+        return;
+      }
+
+      if (chart.config.type !== 'bar') {
+        ctx.restore();
+        return;
+      }
+
+      // Keep labels readable. For dense date/time charts, only draw labels
+      // when there is enough horizontal room. Hover/tooltips still show all data.
+      const isFrequency = chart.canvas && chart.canvas.id === 'reportStatusFrequency';
+      const isDense = chart.canvas && (chart.canvas.id === 'reportDateFrequency' || chart.canvas.id === 'reportTimeFrequency');
+      const datasets = chart.data.datasets;
+
+      datasets.forEach((dataset, datasetIndex) => {
+        // IMPORTANT: do not draw labels for a dataset that the user has
+        // hidden from the legend. This prevents "ghost" labels remaining
+        // after clicking a color/legend to turn it off.
+        if (typeof chart.isDatasetVisible === 'function' && !chart.isDatasetVisible(datasetIndex)) return;
+
+        const meta = chart.getDatasetMeta(datasetIndex);
+        const dataValues = dataset.data || [];
+        const srcSets = chart._reportLabelDataSets || [];
+        const singleSrc = chart._reportLabelData || [];
+
+        meta.data.forEach((bar,i) => {
+          const value = Number(dataValues[i]) || 0;
+          if (!value) return;
+
+          const props = bar.getProps(['x','y','width','height'], true);
+          const width = Number(props.width) || 0;
+          const src = (srcSets[datasetIndex] && srcSets[datasetIndex][i]) || singleSrc[i] || null;
+          // For Keyword charts, use the exact percentage from the same
+          // item used by the tooltip (the black tooltip). Never calculate
+          // percentage from the sum of visible bars.
+          const isKeywordChart = chart.canvas &&
+            (chart.canvas.id === 'reportCustomerKeywordBar' || chart.canvas.id === 'reportAdminKeywordBar');
+          const totalForPercent = chart._reportPercentTotal || dataValues.reduce((sum,v) => sum + (Number(v) || 0), 0);
+          const pct = src && src.percent != null
+            ? src.percent
+            : (isKeywordChart
+                ? '0.0'
+                : (totalForPercent ? ((value / totalForPercent) * 100).toFixed(1) : '0.0'));
+
+          if (isFrequency) {
+            const label = `${value} (${pct}%)`;
+            // Put each dataset label at the actual bar position and use a
+            // small vertical offset. Hidden datasets are skipped above.
+            const offset = datasetIndex * 10;
+            const y = Math.max(12, props.y - 5 - offset);
+            ctx.fillStyle = '#374151';
+            ctx.font = '600 9px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(label, props.x, y);
+            return;
+          }
+
+          // For dense Date/Time charts, suppress labels on very narrow bars.
+          if (isDense && width < 24) return;
+
+          // Sections 6–9: show count + percentage beside each horizontal bar.
+          const label = `${value} (${pct}%)`;
+          ctx.fillStyle = '#374151';
+          ctx.font = '600 9px Arial';
+          if (chart.options.indexAxis === 'y') {
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, props.x + 6, props.y);
+          } else {
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(label, props.x, Math.max(12, props.y - 5));
+          }
+        });
+      });
+      ctx.restore();
+    }
+  };
+},
+
+// Keyword charts are rebuilt from scratch because their labels/dataset length
+// can change when Page 4 is edited after Report has already been opened.
+renderReportKeywordChartsFresh() {
+  if (this.currentTab !== 'report' || typeof Chart === 'undefined') return;
+
+  const plugin = this.renderReportValuePlugin();
+  const customer = this.reportCustomerKeywordStats;
+  const admin = this.reportAdminKeywordStats;
+
+  ['reportCustomerKeywordBar', 'reportAdminKeywordBar'].forEach(id => {
+    try {
+      const canvas = document.getElementById(id);
+      const existing = this.reportCharts?.[id] || (canvas && Chart.getChart(canvas));
+      if (existing) existing.destroy();
+      if (this.reportCharts) delete this.reportCharts[id];
+    } catch (e) {
+      console.warn('Keyword chart destroy error:', id, e);
+    }
+  });
+
+  const makeConfig = (items, backgroundColor) => ({
+    type: 'bar',
+    data: {
+      labels: items.map(x => x.name),
+      datasets: [{
+        data: items.map(x => x.count),
+        backgroundColor
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: c => {
+            const item = items[c.dataIndex];
+            return item ? `${item.count} แชท (${item.percent}%)` : `${c.raw} แชท`;
+          }
+        }}
+      },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    },
+    plugins: [plugin]
+  });
+
+  const createFresh = (id, config, items) => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent || parent.offsetWidth === 0 || parent.offsetHeight === 0) {
+      setTimeout(() => {
+        if (this.currentTab === 'report') this.renderReportKeywordChartsFresh();
+      }, 120);
+      return;
+    }
+    config._reportLabelData = items;
+    // IMPORTANT: Keyword percentages must always use the total number of
+    // chats in the current Report filter, NOT the sum of keyword bars.
+    // Without this, the canvas-label fallback calculates 141/(141+22+12)
+    // instead of 141/reportFilteredData.length.
+    config._reportPercentTotal = this.reportFilteredData.length;
+    this.createReportChart(id, config);
+  };
+
+  createFresh('reportCustomerKeywordBar', makeConfig(customer, '#60a5fa'), customer);
+  createFresh('reportAdminKeywordBar', makeConfig(admin, '#4ade80'), admin);
+},
+
+renderReportCharts(){
+  if (this.currentTab !== 'report' || typeof Chart === 'undefined') return;
+
+  const plugin = this.renderReportValuePlugin();
+  const pieLabelPlugin = {
+    id:'reportPieLabels',
+    afterDraw: chart => {
+      try {
+        const meta = chart.getDatasetMeta(0);
+        const vals = chart.data.datasets[0].data || [];
+        const total = vals.reduce((a,b)=>a + (Number(b)||0), 0);
+        const ctx = chart.ctx;
+        if (!total) return;
+        ctx.save();
+        meta.data.forEach((arc,i)=>{
+          const v = Number(vals[i]) || 0;
+          if (!v) return;
+          const pct = ((v/total)*100).toFixed(1) + '%';
+          const angle = (arc.startAngle + arc.endAngle) / 2;
+          const radius = (arc.innerRadius + arc.outerRadius) / 2;
+          const x = arc.x + Math.cos(angle) * radius;
+          const y = arc.y + Math.sin(angle) * radius;
+          ctx.fillStyle='#fff';
+          ctx.font='700 12px Arial';
+          ctx.textAlign='center';
+          ctx.textBaseline='middle';
+          ctx.fillText(pct,x,y);
+        });
+        ctx.restore();
+      } catch(e) { console.warn('Pie label error', e); }
+    }
+  };
+  const pieOptions = {
+    responsive:true,
+    maintainAspectRatio:false,
+    animation:false,
+    layout:{padding:8},
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:c => `${c.label}: ${c.raw} แชท`}}
+    }
+  };
+
+  const channel = this.reportChannelStats;
+  this.createReportChart('reportChannelPie', {
+    type:'doughnut',
+    data:{
+      labels:channel.map(x=>x.name),
+      datasets:[{
+        data:channel.map(x=>x.count),
+        backgroundColor:channel.map(x=>x.color),
+        borderColor:'#ffffff',
+        borderWidth:2,
+        hoverOffset:4
+      }]
+    },
+    options:{...pieOptions, cutout:'58%'},
+    plugins:[pieLabelPlugin]
+  });
+
+  const status = this.reportStatusStats;
+  this.createReportChart('reportStatusPie', {
+    type:'doughnut',
+    data:{
+      labels:status.map(x=>x.name),
+      datasets:[{
+        data:status.map(x=>x.count),
+        backgroundColor:status.map(x=>x.color),
+        borderColor:'#ffffff',
+        borderWidth:2,
+        hoverOffset:4
+      }]
+    },
+    options:{...pieOptions, cutout:'58%'},
+    plugins:[pieLabelPlugin]
+  });
+
+  const process = this.reportProcessStats;
+  this.createReportChart('reportProcessPie', {
+    type:'doughnut',
+    data:{
+      labels:process.map(x=>x.name),
+      datasets:[{
+        data:process.map(x=>x.count),
+        backgroundColor:process.map((x,i)=>`hsl(${(i*47)%360} 70% 55%)`),
+        borderColor:'#ffffff',
+        borderWidth:2,
+        hoverOffset:3
+      }]
+    },
+    options:{...pieOptions, cutout:'58%'},
+    plugins:[pieLabelPlugin]
+  });
+
+  const f=this.reportStatusFrequencyData;
+  const fl=f.Overall.map(x=>x.bucket);
+  const freqTotal=this.reportFilteredData.length || 0;
+  const makeFreqLabels=arr=>arr.map(x=>({count:x.count,percent:freqTotal?((x.count/freqTotal)*100).toFixed(1):'0.0'}));
+  const freqLabelSets=[
+    makeFreqLabels(f.Overall),
+    makeFreqLabels(f.New),
+    makeFreqLabels(f.Lead),
+    makeFreqLabels(f.Old)
+  ];
+  this.createReportChart('reportStatusFrequency',{
+    type:'bar',data:{labels:fl,datasets:[
+      {label:'Overall',data:f.Overall.map(x=>x.count),backgroundColor:'#93c5fd'},
+      {label:'New',data:f.New.map(x=>x.count),backgroundColor:'#86efac'},
+      {label:'Lead',data:f.Lead.map(x=>x.count),backgroundColor:'#fbbf24'},
+      {label:'Old',data:f.Old.map(x=>x.count),backgroundColor:'#94a3b8'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,scales:{x:{stacked:false,categoryPercentage:0.78,barPercentage:0.9,ticks:{maxRotation:0,minRotation:0}},y:{beginAtZero:true,ticks:{precision:0}}}},
+    plugins:[plugin],
+    _reportLabelDataSets:freqLabelSets,
+    _reportPercentTotal:freqTotal
+  });
+
+  const dt=this.reportDateStats;
+  this.createReportChart('reportDateFrequency',{type:'bar',data:{labels:dt.map(x=>x.name),datasets:[{data:dt.map(x=>x.count),backgroundColor:'#60a5fa'}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} แชท`}}},scales:{x:{ticks:{autoSkip:false,maxRotation:45,minRotation:45}},y:{beginAtZero:true,ticks:{precision:0}}}},plugins:[plugin]});
+
+  const tm=this.reportTimeStats;
+  this.createReportChart('reportTimeFrequency',{type:'bar',data:{labels:tm.map(x=>x.name),datasets:[{data:tm.map(x=>x.count),backgroundColor:'#60a5fa'}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} แชท`}}},scales:{x:{ticks:{autoSkip:false,maxRotation:45,minRotation:45}},y:{beginAtZero:true,ticks:{precision:0}}}},plugins:[plugin]});
+
+  const cu=this.reportCustomerStats;
+  const cuCfg={type:'bar',data:{labels:cu.map(x=>x.name),datasets:[{data:cu.map(x=>x.count),backgroundColor:'#60a5fa'}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}},plugins:[plugin]};
+  cuCfg._reportLabelData=cu; this.createReportChart('reportCustomerBar',cuCfg);
+
+  const ad=this.reportAdminStats;
+  const adCfg={type:'bar',data:{labels:ad.map(x=>x.name),datasets:[{data:ad.map(x=>x.count),backgroundColor:'#4ade80'}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}},plugins:[plugin]};
+  adCfg._reportLabelData=ad; this.createReportChart('reportAdminBar',adCfg);
+
+  // Sections 8–9: rebuild from the current Page 4 keyword lists.
+  this.renderReportKeywordChartsFresh();
+},
+
+// =========================================================
+// DELAY RENDER
+// =========================================================
+
+scheduleReportCharts() {
+  clearTimeout(this.reportChartRenderTimer);
+  this.reportChartRenderTimer = setTimeout(() => {
+    if (this.currentTab !== 'report') return;
+    this.$nextTick(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.renderReportCharts();
+          requestAnimationFrame(() => {
+            Object.values(this.reportCharts || {}).forEach(chart => {
+              try { if (chart && chart.canvas && chart.canvas.isConnected) chart.resize(); } catch(e) {}
+            });
+          });
+        });
+      });
+    });
+  }, 180);
+},
+
+        get sortedCustomerCategoryCount() {
+          let counts = {};
+          this.processFilteredData.forEach(item => {
+            let cat = item.ai_Customer || 'ไม่ระบุหมวดหมู่';
+            counts[cat] = (counts[cat] || 0) + 1;
+          });
+          return Object.keys(counts).map(cat => ({
+            category: cat,
+            count: counts[cat]
+          })).sort((a, b) => b.count - a.count);
+        },
+
+        get sortedAdminResponseCount() {
+          let targetData = this.processFilteredData;
+          if (this.selectedCategory) {
+            targetData = targetData.filter(item => (item.ai_Customer || '') === this.selectedCategory);
+          }
+
+          let map = {};
+          targetData.forEach(item => {
+            let admin = item.ai_Admin || 'ไม่มีการตอบกลับ';
+            let proc = item.ai_Process || 'ไม่ระบุสถานะ';
+           
+            if (!map[admin]) {
+              map[admin] = { count: 0, processMap: {} };
+            }
+            map[admin].count += 1;
+            if (!map[admin].processMap[proc]) {
+              map[admin].processMap[proc] = [];
+            }
+            map[admin].processMap[proc].push(item);
+          });
+
+          return Object.keys(map).map(admin => {
+            let procMap = map[admin].processMap;
+            let processDetails = Object.keys(procMap).map(pName => ({
+              name: pName,
+              count: procMap[pName].length,
+              chats: procMap[pName]
+            })).sort((a, b) => b.count - a.count);
+
+            return {
+              adminResp: admin,
+              count: map[admin].count,
+              processDetails: processDetails
+            };
+          }).sort((a, b) => b.count - a.count);
+        },
+
+
+        get sortedProcessSummary() {
+          let total = this.filteredData.length;
+          let counts = {};
+          this.filteredData.forEach(item => {
+            let proc = item.ai_Process || 'ไม่ระบุสถานะ';
+            counts[proc] = (counts[proc] || 0) + 1;
+          });
+
+          return Object.keys(counts).map(proc => {
+            let count = counts[proc];
+            let percent = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+            return { processName: proc, count: count, percent: percent };
+          }).sort((a, b) => b.count - a.count);
+      
+      
+        }
+      }
+    }
+  </script>
+<script>
+  // Remove any accidental plain-text/error text injected directly into <body>
+  // while preserving the actual dashboard and its scripts.
+  document.addEventListener('DOMContentLoaded', function () {
+    const app = document.getElementById('appMain');
+    if (!app) return;
+    Array.from(document.body.childNodes).forEach(function (node) {
+      if (node !== app && node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+        node.remove();
+      }
+    });
+  });
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
